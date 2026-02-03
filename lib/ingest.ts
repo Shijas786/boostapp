@@ -21,16 +21,18 @@ export async function ingestNewBuys() {
 
     console.log(`⏱️ Querying since: ${cursor}`);
 
-    // CTE window: Look back 60 days (Performance optimization)
-    // Scanning full history causes timeouts/partial results.
-    const cteDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
+    // CTE window: Look back 7 days (Performance optimization)
+    // Scanning 60 days of events with toString() conversion is too slow.
+    const cteDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
         .toISOString().replace('T', ' ').replace('Z', '');
 
-    // 2. Query CDP (Using base.events)
-    // We use LOWER() for address matches
+    // 2. Query CDP (Using base.events + ClickHouse Syntax)
+    // FIX: CDP uses ClickHouse under the hood. 
+    // - Use toString() to convert Variant to String.
+    // - Use LOWER() for safe joins.
     const cdpSql = `
         WITH content_coins AS (
-            SELECT DISTINCT CAST(parameters['coin'] AS VARCHAR) AS token_address
+            SELECT DISTINCT LOWER(toString(parameters['coin'])) AS token_address
             FROM base.events
             WHERE event_name IN ('CoinCreated', 'CoinCreatedV4', 'CreatorCoinCreated')
             AND block_timestamp > '${cteDaysAgo}'
@@ -40,11 +42,11 @@ export async function ingestNewBuys() {
                 t.block_timestamp,
                 t.transaction_hash as tx_hash,
                 t.address as post_token,
-                CAST(t.parameters['to'] AS VARCHAR) as buyer
+                toString(t.parameters['to']) as buyer
             FROM base.events t
-            JOIN content_coins cc ON LOWER(t.address) = LOWER(cc.token_address)
+            JOIN content_coins cc ON LOWER(t.address) = cc.token_address
             WHERE t.event_name = 'Transfer'
-            AND t.block_timestamp > CAST('${cursor}' AS TIMESTAMP)
+            AND t.block_timestamp > '${cursor}'
             ORDER BY t.block_timestamp ASC
         )
         SELECT * FROM recent_buys
