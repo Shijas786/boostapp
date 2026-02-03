@@ -32,6 +32,9 @@ export async function ingestNewBuys() {
     const cteDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
         .toISOString().replace('T', ' ').replace('Z', '');
 
+    const lookbackDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+        .toISOString().replace('T', ' ').split('.')[0];
+
     const cdpSql = `
         SELECT 
             block_timestamp,
@@ -44,12 +47,12 @@ export async function ingestNewBuys() {
         AND address IN (
             SELECT DISTINCT toString(parameters['coin'])
             FROM base.events
-            WHERE event_name IN ('CoinCreated', 'CoinCreatedV4', 'CreatorCoinCreated')
-            AND address = '${factoryAddress}'
-            AND block_timestamp > '${cteDaysAgo}'
+            WHERE address = '${factoryAddress}'
+            AND event_name IN ('CoinCreated', 'CoinCreatedV4', 'CreatorCoinCreated')
+            AND block_timestamp > '${lookbackDate}'
         )
         ORDER BY block_timestamp ASC
-        LIMIT 1000
+        LIMIT 2000
     `;
 
     try {
@@ -60,34 +63,32 @@ export async function ingestNewBuys() {
             return { message: 'No new data', count: 0 };
         }
 
-        let insertedCount = 0;
-        let maxTime = cursor;
+        const buysToInsert = rows.map((row: any) => ({
+            buyer: row.buyer.toLowerCase(),
+            post_token: row.post_token.toLowerCase(),
+            block_time: row.block_timestamp,
+            tx_hash: row.tx_hash
+        }));
 
-        for (const row of rows) {
-            // Minimal Insert (No name resolution!)
-            try {
-                await db.insertBuy({
-                    buyer: row.buyer.toLowerCase(),
-                    post_token: row.post_token.toLowerCase(),
-                    block_time: row.block_timestamp,
-                    tx_hash: row.tx_hash
-                });
-                insertedCount++;
-            } catch (e) {
-                // Ignore duplicates (PGRST116 / Unique violation)
-            }
-
-            if (row.block_timestamp > maxTime) {
-                maxTime = row.block_timestamp;
-            }
+        // Batch Insert (Much faster!)
+        const { error } = await db.insertBuys(buysToInsert);
+        if (error) {
+            console.error(`❌ DB Error during batch:`, error.message);
+        } else {
+            console.log(`✅ DB: Inserted/Upserted ${buysToInsert.length} rows`);
         }
+
+        console.log(`DEBUG: Result range: ${rows[0].block_timestamp} TO ${rows[rows.length - 1].block_timestamp}`);
+
+        const maxTime = rows.reduce((max: string, row: any) =>
+            row.block_timestamp > max ? row.block_timestamp : max,
+            cursor
+        );
 
         // Update Cursor
-        if (insertedCount > 0 || rows.length > 0) {
-            await db.setCursor("last_ingest_time", maxTime);
-        }
+        await db.setCursor("last_ingest_time", maxTime);
 
-        return { message: 'Infection complete', count: insertedCount, new_cursor: maxTime };
+        return { message: 'Ingestion complete', count: rows.length, new_cursor: maxTime };
 
     } catch (e: any) {
         console.error('Ingest Error:', e.message);

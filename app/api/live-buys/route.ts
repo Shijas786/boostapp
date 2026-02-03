@@ -1,54 +1,26 @@
 import { db } from '@/lib/db';
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
     try {
-        // Get the 50 most recent buys with names
-        const supabase = (await import('@/lib/db-supabase')).supabase;
+        const buys = await db.getActivityFeed('', 50); // Empty address gets everyone
 
-        if (!supabase) {
-            return NextResponse.json({ error: 'DB not available' }, { status: 500 });
-        }
+        // Fetch identities for these buyers
+        const buyerAddresses = Array.from(new Set(buys.map((b: any) => b.buyer.toLowerCase()))) as string[];
+        const identities = await db.getIdentities(buyerAddresses);
+        const identityMap = new Map(identities.map((id: any) => [id.address.toLowerCase(), id]));
 
-        const { data, error } = await supabase
-            .from('buys')
-            .select(`
-                buyer,
-                post_token,
-                block_time,
-                tx_hash
-            `)
-            .order('block_time', { ascending: false })
-            .limit(50);
-
-        if (error) {
-            return NextResponse.json({ error: error.message }, { status: 500 });
-        }
-
-        // Enrich with names
-        const buyersSet = new Set(data?.map(b => b.buyer) || []);
-        const buyerAddresses = Array.from(buyersSet);
-
-        const { data: names } = await supabase
-            .from('names')
-            .select('address, name, fid, is_contract')
-            .in('address', buyerAddresses);
-
-        const nameMap = new Map(names?.map(n => [n.address, n]) || []);
-
-        // Filter out contracts and users without names - show only verified users
-        const enrichedBuys = data
-            ?.map(buy => {
-                const nameInfo = nameMap.get(buy.buyer);
-                return {
-                    ...buy,
-                    buyer_name: nameInfo?.name,
-                    buyer_fid: nameInfo?.fid,
-                    is_contract: nameInfo?.is_contract
-                };
-            })
-            .filter(buy => !buy.is_contract && buy.buyer_name) // Only verified users with names
-            || [];
+        const enrichedBuys = buys.map((buy: any) => {
+            const id: any = identityMap.get(buy.buyer.toLowerCase());
+            return {
+                ...buy,
+                buyer_name: id?.base_name || id?.farcaster_username,
+                avatar_url: id?.avatar_url,
+                farcaster_fid: id?.farcaster_fid
+            };
+        });
 
         return NextResponse.json({
             data: enrichedBuys,

@@ -13,12 +13,44 @@ export default function Home() {
   const [search, setSearch] = useState('');
 
   const fetchLeaderboard = async (p: string) => {
-    if (p === 'live') return; // Live tab has its own component
+    if (p === 'live') return;
     setLoading(true);
     try {
       const res = await fetch(`/api/leaderboard?period=${p}`);
       const data = await res.json();
-      setResults(data.data || []);
+      const leaderboard = data.data || [];
+      setResults(leaderboard);
+
+      // Batch resolve missing identities
+      const missingAddresses = leaderboard
+        .filter((r: any) => !r.base_name && !r.farcaster_username)
+        .map((r: any) => r.buyer_address);
+
+      if (missingAddresses.length > 0) {
+        const idRes = await fetch('/api/identities/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addresses: missingAddresses })
+        });
+        const idData = await idRes.json();
+
+        if (idData.ok) {
+          const idMap = new Map(idData.identities.map((id: any) => [id.address.toLowerCase(), id]));
+          setResults(prev => prev.map((r: any) => {
+            const id: any = idMap.get(r.buyer_address.toLowerCase());
+            if (id) {
+              return {
+                ...r,
+                base_name: id.base_name,
+                farcaster_username: id.farcaster_username,
+                avatar_url: id.avatar_url,
+                farcaster_fid: id.farcaster_fid
+              };
+            }
+            return r;
+          }));
+        }
+      }
     } catch (e) {
       console.error(e);
     }
@@ -93,7 +125,7 @@ export default function Home() {
               <div className="col-span-2 md:col-span-1">#</div>
               <div className="col-span-7 md:col-span-5">Identity</div>
               <div className="col-span-3 md:col-span-2 text-right hidden md:block">Total Buys</div>
-              <div className="col-span-3 md:col-span-2 text-right hidden md:block">-</div>
+              <div className="col-span-3 md:col-span-2 text-right hidden md:block">Unique Posts</div>
               <div className="col-span-3 md:col-span-2 text-right px-4 hidden md:block">Last Active</div>
             </div>
 

@@ -17,7 +17,13 @@ export const IdentityCell = ({ address, initialBaseName, initialFarcasterName, i
     });
 
     useEffect(() => {
-        // Resolve if no cached identity provided
+        setId({
+            base_name: initialBaseName,
+            farcaster_username: initialFarcasterName,
+            avatar_url: initialAvatar
+        });
+
+        // Resolve if no identity provided at all
         if (!initialBaseName && !initialFarcasterName) {
             fetch(`/api/identity?address=${address}`)
                 .then(res => res.json())
@@ -26,7 +32,7 @@ export const IdentityCell = ({ address, initialBaseName, initialFarcasterName, i
                 })
                 .catch(err => console.error('Failed to resolve identity:', err));
         }
-    }, [address]);
+    }, [address, initialBaseName, initialFarcasterName, initialAvatar]);
 
     const displayName = id.base_name || id.farcaster_username || `${address.slice(0, 6)}...${address.slice(-4)}`;
     const isBase = !!id.base_name;

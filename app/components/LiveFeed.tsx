@@ -6,6 +6,7 @@ import { IdentityCell } from './IdentityCell';
 interface LiveBuy {
     buyer: string;
     buyer_name?: string;
+    avatar_url?: string;
     post_token: string;
     block_time: string;
     tx_hash: string;
@@ -60,7 +61,8 @@ export function LiveFeed() {
                             <div className="flex-1 min-w-0">
                                 <IdentityCell
                                     address={buy.buyer}
-                                    initialName={buy.buyer_name}
+                                    initialBaseName={buy.buyer_name}
+                                    initialAvatar={buy.avatar_url}
                                 />
                             </div>
                             <div className="text-right text-sm">

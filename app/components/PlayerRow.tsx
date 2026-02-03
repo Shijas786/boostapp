@@ -32,11 +32,10 @@ export function PlayerRow({ row, rank }: PlayerRowProps) {
                 />
             </div>
             <div className="col-span-3 md:col-span-2 text-right font-mono font-bold text-lg hidden md:block">
-                {row.buys_count}
+                {row.total_buys}
             </div>
-            {/* Keeping the column structure but highlighting buys_count more simply */}
             <div className="col-span-3 md:col-span-2 text-right font-mono font-bold text-lg text-blue-600 hidden md:block">
-                --
+                {row.unique_posts}
             </div>
             <div className="col-span-3 md:col-span-2 text-right px-4 font-mono text-sm text-gray-500 hidden md:block">
                 <TimeAgo date={row.last_active} />

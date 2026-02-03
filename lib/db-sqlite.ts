@@ -32,6 +32,15 @@ sql.exec(`
         avatar_url TEXT,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS holdings (
+        wallet TEXT,
+        post_token TEXT,
+        balance NUMERIC DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (wallet, post_token)
+    );
+    CREATE INDEX IF NOT EXISTS idx_holdings_wallet ON holdings(wallet);
 `);
 
 export const dbSqlite = {
@@ -49,14 +58,34 @@ export const dbSqlite = {
         try {
             sql.prepare(`
                 INSERT OR IGNORE INTO buys (buyer, post_token, block_time, tx_hash)
-                VALUES (@buyer, @post_token, @block_time, @tx_hash)
+                VALUES (@buyer, @post_token, @buyer, @block_time, @tx_hash)
             `).run(buy);
         } catch (e) { }
+    },
+    insertBuys: async (buys: { buyer: string, post_token: string, block_time: string, tx_hash: string }[]) => {
+        try {
+            const insert = sql.prepare(`
+                INSERT OR IGNORE INTO buys (buyer, post_token, block_time, tx_hash)
+                VALUES (@buyer, @post_token, @block_time, @tx_hash)
+            `);
+            const insertMany = sql.transaction((items) => {
+                for (const item of items) insert.run(item);
+            });
+            insertMany(buys);
+            return { error: null };
+        } catch (e: any) {
+            return { error: e };
+        }
     },
 
     // Identities (Step 1 Reset)
     getIdentity: async (address: string) => {
         return sql.prepare('SELECT * FROM identities WHERE address = ?').get(address.toLowerCase()) as any;
+    },
+    getIdentities: async (addresses: string[]) => {
+        if (addresses.length === 0) return [];
+        const placeholders = addresses.map(() => '?').join(',');
+        return sql.prepare(`SELECT * FROM identities WHERE address IN (${placeholders})`).all(addresses.map(a => a.toLowerCase())) as any[];
     },
     saveIdentity: async (identity: any) => {
         sql.prepare(`
@@ -96,12 +125,43 @@ export const dbSqlite = {
     },
 
     // Mock/Compatibility for other methods if needed
-    getActivityFeed: async (address: string, limit = 20) => {
-        return sql.prepare(`
-            SELECT * FROM buys 
-            WHERE buyer = ?
-            ORDER BY block_time DESC
-            LIMIT ?
-        `).all(address.toLowerCase(), limit);
+    getActivityFeed: async (address: string = '', limit = 50) => {
+        const addressLower = address.toLowerCase();
+        let query = 'SELECT * FROM buys ORDER BY block_time DESC LIMIT ?';
+        let params: any[] = [limit];
+
+        if (address) {
+            query = 'SELECT * FROM buys WHERE buyer = ? ORDER BY block_time DESC LIMIT ?';
+            params = [addressLower, limit];
+        }
+
+        return sql.prepare(query).all(...params) as any[];
+    },
+
+    getAddressByName: async (name: string): Promise<string | null> => {
+        const nameLower = name.toLowerCase();
+        const row = sql.prepare('SELECT address FROM identities WHERE LOWER(base_name) = ? OR LOWER(farcaster_username) = ?').get(nameLower, nameLower) as { address: string } | undefined;
+        return row ? row.address : null;
+    },
+
+    getProfileStats: async (address: string) => {
+        const addressLower = address.toLowerCase();
+        const rows = sql.prepare('SELECT block_time, post_token FROM buys WHERE buyer = ?').all(addressLower) as { block_time: string, post_token: string }[];
+
+        if (rows.length === 0) return null;
+
+        const uniquePosts = new Set(rows.map(b => b.post_token));
+        const times = rows.map(b => new Date(b.block_time).getTime());
+
+        return {
+            total_buys: rows.length,
+            unique_posts: uniquePosts.size,
+            first_buy: new Date(Math.min(...times)).toISOString(),
+            last_buy: new Date(Math.max(...times)).toISOString()
+        };
+    },
+
+    getProfileHoldings: async (address: string) => {
+        return sql.prepare('SELECT * FROM holdings WHERE wallet = ?').all(address.toLowerCase()) as any[];
     }
 };

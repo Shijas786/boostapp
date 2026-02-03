@@ -14,7 +14,7 @@ create table if not exists buys (
   post_token text not null,
   block_time timestamptz not null,
   tx_hash text not null,
-  unique(tx_hash, post_token) -- prevent duplicates
+  CONSTRAINT buys_tx_hash_post_token_buyer_key UNIQUE(tx_hash, post_token, buyer)
 );
 
 -- Table 2: identities (cached names & social info)
@@ -28,36 +28,59 @@ create table if not exists identities (
   updated_at timestamptz default now()
 );
 
+-- Table 3: holdings (derived balances)
+create table if not exists holdings (
+  wallet text,
+  post_token text,
+  balance numeric default 0,
+  updated_at timestamptz default now(),
+  primary key (wallet, post_token)
+);
+create index if not exists idx_holdings_wallet on holdings(wallet);
+
+
 -- Indexes (Important for performance)
 create index if not exists idx_buys_time on buys(block_time);
 create index if not exists idx_buys_buyer on buys(buyer);
 create index if not exists idx_buys_post_token on buys(post_token);
 
+-- FIX FOR UNIQUE CONSTRAINT (Run this if you have existing data)
+-- Ensure we don't have the old 2-column unique constraint
+ALTER TABLE buys DROP CONSTRAINT IF EXISTS buys_tx_hash_post_token_key;
+-- Ensure we don't have the 3-column one under a different name or to allow re-run
+ALTER TABLE buys DROP CONSTRAINT IF EXISTS buys_tx_hash_post_token_buyer_key;
+-- Add it back cleanly
+ALTER TABLE buys ADD CONSTRAINT buys_tx_hash_post_token_buyer_key UNIQUE (tx_hash, post_token, buyer);
+
 -- RPC: Get Leaderboard (Optimized for the new identities table)
-create or replace function get_leaderboard(period_days int default 7, limit_count int default 20)
-returns table (
+DROP FUNCTION IF EXISTS get_leaderboard(int, int);
+
+CREATE OR REPLACE FUNCTION get_leaderboard(period_days int default 7, limit_count int default 20)
+RETURNS TABLE (
   buyer_address text,
-  buys_count bigint,
+  total_buys bigint,
+  unique_posts bigint,
   last_active timestamptz,
   base_name text,
   farcaster_username text,
   avatar_url text,
   farcaster_fid bigint
 )
-language sql
-as $$
-  select 
+LANGUAGE sql
+AS $$
+  SELECT 
     b.buyer as buyer_address,
-    count(*) as buys_count,
-    max(b.block_time) as last_active,
+    COUNT(*) as total_buys,
+    COUNT(DISTINCT b.post_token) as unique_posts,
+    MAX(b.block_time) as last_active,
     i.base_name,
     i.farcaster_username,
     i.avatar_url,
     i.farcaster_fid
-  from buys b
-  left join identities i on b.buyer = i.address
-  where b.block_time > (now() - (period_days || ' days')::interval)
-  group by b.buyer, i.base_name, i.farcaster_username, i.avatar_url, i.farcaster_fid
-  order by buys_count desc
-  limit limit_count;
+  FROM buys b
+  LEFT JOIN identities i ON b.buyer = i.address
+  WHERE b.block_time > (now() - (period_days || ' days')::interval)
+  GROUP BY b.buyer, i.base_name, i.farcaster_username, i.avatar_url, i.farcaster_fid
+  ORDER BY unique_posts DESC, total_buys DESC
+  LIMIT limit_count;
 $$;

@@ -1,4 +1,3 @@
-
 import { notFound } from 'next/navigation';
 import { db } from '@/lib/db';
 import { IdentityCell } from '@/app/components/IdentityCell';
@@ -9,7 +8,6 @@ export default async function ProfilePage({ params }: { params: { id: string } }
     const id = decodeURIComponent(params.id).toLowerCase();
 
     let address = id.startsWith('0x') ? id : null;
-    let name: string | null = null;
 
     // Resolve Name if ID is not an address
     if (!address) {
@@ -20,11 +18,12 @@ export default async function ProfilePage({ params }: { params: { id: string } }
     }
 
     // Fetch Identity & Stats
-    const identityWrapper = await db.getName(address);
-    name = identityWrapper?.name || null;
-
+    const identity = await db.getIdentity(address) as any;
     const stats = await db.getProfileStats(address) as any;
     const activity = await db.getActivityFeed(address, 50) as any[];
+    const holdings = await db.getProfileHoldings(address) as any[];
+
+    const displayName = identity?.base_name || identity?.farcaster_username || 'User';
 
     return (
         <main className="min-h-screen bg-white text-black p-4 md:p-8 font-sans">
@@ -34,42 +33,72 @@ export default async function ProfilePage({ params }: { params: { id: string } }
                 <div className="bg-white border-2 border-black p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] rounded-sm flex flex-col md:flex-row items-center gap-6">
                     <div className="shrink-0">
                         {/* Large Avatar */}
-                        <div className="w-24 h-24 rounded-full border-2 border-black overflow-hidden bg-gray-100 flex items-center justify-center text-4xl font-bold">
-                            {/* Reusing IdentityCell for consistent visual or just using fallback logic if no avatar url in DB (currently DB doesn't store avatar URL, just name/source) */}
-                            {/* Ideally we update DB to store avatar url, but for now IdentityCell handles extraction from name */}
-                            <IdentityCell address={address} initialName={name || undefined} />
-                            {/* Wait, IdentityCell renders a small row. We want a big avatar here. 
-                               For MVP, let's just use IdentityCell but maybe we need a dedicated component later.
-                               Actually, IdentityCell renders name too. 
-                               Let's just use a clean layout manually here.
-                            */}
+                        <div className="w-24 h-24 rounded-full border-2 border-black overflow-hidden bg-gray-100 flex items-center justify-center">
+                            {identity?.avatar_url ? (
+                                <img src={identity.avatar_url} alt={displayName} className="w-full h-full object-cover" />
+                            ) : (
+                                <span className="text-4xl font-black">{displayName.charAt(0).toUpperCase()}</span>
+                            )}
                         </div>
                     </div>
 
                     <div className="flex-1 text-center md:text-left">
                         <h1 className="text-4xl font-black mb-2 tracking-tight">
-                            {name || 'Unknown User'}
+                            {displayName}
                         </h1>
                         <div className="font-mono text-gray-500 bg-gray-100 inline-block px-2 py-1 rounded border border-gray-300 text-sm">
                             {address}
                         </div>
                         <div className="mt-4 flex gap-4 justify-center md:justify-start">
-                            <a href={`https://basescan.org/address/${address}`} target="_blank" className="text-blue-600 hover:underline font-bold text-sm border-b-2 border-transparent hover:border-blue-600">
-                                View on Basescan ↗
+                            {identity?.farcaster_username && (
+                                <a href={`https://warpcast.com/${identity.farcaster_username}`} target="_blank" className="bg-purple-600 text-white px-3 py-1 font-bold text-xs rounded hover:bg-purple-700 transition-colors">
+                                    Farcaster
+                                </a>
+                            )}
+                            <a href={`https://basescan.org/address/${address}`} target="_blank" className="text-blue-600 hover:underline font-bold text-sm">
+                                Basescan ↗
                             </a>
-                            <a href={`https://zora.co/${address}`} target="_blank" className="text-green-600 hover:underline font-bold text-sm border-b-2 border-transparent hover:border-green-600">
-                                View on Zora ↗
+                            <a href={`https://zora.co/${address}`} target="_blank" className="text-green-600 hover:underline font-bold text-sm">
+                                Zora ↗
                             </a>
                         </div>
                     </div>
                 </div>
 
                 {/* Stats Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <StatCard label="Total Buys" value={stats?.total_buys || 0} color="bg-blue-100" />
-                    <StatCard label="Unique Creators" value={stats?.unique_creators || 0} color="bg-pink-100" />
-                    <StatCard label="Last Active" value={formatTimeAgo(stats?.last_buy_time)} color="bg-yellow-100" />
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    <StatCard label="Total Buys" value={stats?.total_buys || 0} color="bg-blue-50" />
+                    <StatCard label="Held Posts" value={holdings.length || 0} color="bg-yellow-50" />
+                    <StatCard label="Unique Posts" value={stats?.unique_posts || 0} color="bg-green-50" />
+                    <StatCard label="First Buy" value={stats?.first_buy ? new Date(stats.first_buy).toLocaleDateString() : 'Never'} color="bg-purple-50" />
+                    <StatCard label="Last Active" value={formatTimeAgo(stats?.last_buy)} color="bg-pink-50" />
                 </div>
+
+                {/* Holdings Section */}
+                {holdings.length > 0 && (
+                    <div className="bg-yellow-50 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
+                        <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                            <span>💎</span> Currently Held Signals
+                        </h2>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {holdings.map((h, i) => (
+                                <a
+                                    key={i}
+                                    href={`https://zora.co/collect/base:${h.post_token}`}
+                                    target="_blank"
+                                    className="p-3 bg-white border border-black hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex flex-col items-center gap-2"
+                                >
+                                    <div className="w-full aspect-square bg-gray-100 flex items-center justify-center font-mono text-[10px] break-all p-2 text-center text-gray-400">
+                                        {h.post_token}
+                                    </div>
+                                    <div className="text-[10px] font-bold text-blue-600 truncate w-full text-center">
+                                        View Post ↗
+                                    </div>
+                                </a>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Activity Feed */}
                 <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
