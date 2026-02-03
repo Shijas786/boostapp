@@ -24,7 +24,8 @@ export async function ingestNewBuys() {
     // CTE window: REMOVED timestamp filter to capture buys of ALL coins (even old ones)
     // const cteDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)...
 
-    // 2. Query CDP (Incremental)
+    // 2. Query CDP (Hybrid: Events for creation, Transfers for buys)
+    // We use a 2-minute buffer for the 'now' limit to ensure data consistency
     const cdpSql = `
         WITH content_coins AS (
             SELECT DISTINCT CAST(parameters['coin'] AS VARCHAR) AS token_address
@@ -35,12 +36,11 @@ export async function ingestNewBuys() {
             SELECT 
                 t.block_timestamp,
                 t.transaction_hash as tx_hash,
-                t.address as post_token,
-                CAST(t.parameters['to'] AS VARCHAR) as buyer
-            FROM base.events t
-            JOIN content_coins cc ON t.address = cc.token_address
-            WHERE t.event_name = 'Transfer'
-            AND t.block_timestamp > '${cursor}'
+                t.contract_address as post_token,
+                t.to_address as buyer
+            FROM base.transfers t
+            JOIN content_coins cc ON LOWER(t.contract_address) = LOWER(cc.token_address)
+            WHERE t.block_timestamp > CAST('${cursor}' AS TIMESTAMP)
             ORDER BY t.block_timestamp ASC
         )
         SELECT * FROM recent_buys
