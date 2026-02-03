@@ -1,5 +1,5 @@
 import { queryCDP } from './cdp';
-import { queryZoraSwaps } from './zora';
+// import { queryZoraSwaps } from './zora'; // Unused
 import { db } from './db';
 import { resolveNameIfMissing } from './names';
 
@@ -62,27 +62,13 @@ export async function ingestNewBuys() {
         console.log(`✅ CDP: Found ${cdpRows.length} buy events`);
         allBuys = [...cdpRows.map((r: any) => ({ ...r, source: 'cdp' }))];
     } catch (e: any) {
-        console.error('CDP Error:', e); // Log error but don't crash entire ingest (Zora might work)
+        console.error('CDP Error:', e);
+        throw e; // Fail loudly
     }
 
-    // Fetch from Zora API
-    try {
-        const zoraRows = await queryZoraSwaps(500);
-        console.log(`✅ Zora: Found ${zoraRows.length} buy events`);
+    // Zora API Logic REMOVED (Using CDP only)
 
-        // Filter Zora results to match our cursor window
-        const cursorTime = new Date(cursor).getTime();
-        const filteredZora = zoraRows.filter((r: any) => {
-            const rowTime = new Date(r.block_time).getTime();
-            return rowTime > cursorTime;
-        });
-
-        allBuys = [...allBuys, ...filteredZora];
-    } catch (e) {
-        console.error('❌ Zora query failed:', e);
-    }
-
-    console.log(`📊 Total: ${allBuys.length} buy events from both sources`);
+    console.log(`📊 Total: ${allBuys.length} buy events`);
 
     if (allBuys.length === 0) {
         console.log('ℹ️ No new buys found.');
