@@ -22,6 +22,8 @@ create table if not exists names (
   address text primary key,
   name text,
   source text,
+  is_contract boolean default false,
+  fid bigint,
   updated_at timestamp with time zone default now()
 );
 
@@ -37,7 +39,9 @@ returns table (
   total_buy_events bigint,
   last_active timestamp with time zone,
   buyer_basename text,
-  buyer_avatar text
+  buyer_avatar text,
+  buyer_is_contract boolean,
+  buyer_fid bigint
 )
 language sql
 as $$
@@ -46,11 +50,14 @@ as $$
     count(distinct b.post_token) as posts_bought,
     count(*) as total_buy_events,
     max(b.block_time) as last_active,
-    n.name as buyer_basename,
-    n.name as buyer_avatar
+    MAX(n.name) as buyer_basename,
+    MAX(n.name) as buyer_avatar,
+    MAX(n.is_contract::int)::boolean as buyer_is_contract,
+    MAX(n.fid) as buyer_fid
   from buys b
   left join names n on b.buyer = n.address
   where b.block_time > (now() - (period_days || ' days')::interval)
+  and (n.is_contract IS NULL OR n.is_contract = false)
   group by b.buyer
   order by posts_bought desc
   limit limit_count;

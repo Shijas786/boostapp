@@ -1,0 +1,28 @@
+name: Ingest Base App Data
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 minutes
+  workflow_dispatch:        # manual run button
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call ingest endpoint
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X GET "${{ vars.VERCEL_URL }}/api/cron/ingest" \
+            -H "Authorization: Bearer $CRON_SECRET")
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "Response: $body"
+          echo "Status: $http_code"
+          
+          if [ "$http_code" != "200" ]; then
+            echo "Failed with status $http_code"
+            exit 1
+          fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

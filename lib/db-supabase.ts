@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-const supabase = (supabaseUrl && supabaseKey)
+export const supabase = (supabaseUrl && supabaseKey)
     ? createClient(supabaseUrl, supabaseKey)
     : null;
 
@@ -32,7 +32,7 @@ export const dbSupabase = {
         const { data } = await supabase.from('names').select('name').eq('address', address).single();
         return data;
     },
-    saveName: async (data: { address: string, name: string | null, source: string }) => {
+    saveName: async (data: { address: string, name: string | null, source: string, is_contract?: boolean, fid?: number }) => {
         if (!supabase) return;
         await supabase.from('names').upsert(data);
     },

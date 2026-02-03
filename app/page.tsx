@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { IdentityCell } from '@/app/components/IdentityCell';
+import { PlayerRow } from '@/app/components/PlayerRow';
+import { LiveFeed } from '@/app/components/LiveFeed';
 
 export default function Home() {
   const router = useRouter();
@@ -12,6 +13,7 @@ export default function Home() {
   const [search, setSearch] = useState('');
 
   const fetchLeaderboard = async (p: string) => {
+    if (p === 'live') return; // Live tab has its own component
     setLoading(true);
     try {
       const res = await fetch(`/api/top-buyers?period=${p}`);
@@ -42,7 +44,7 @@ export default function Home() {
             <span className="bg-yellow-200 px-3 py-1 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -rotate-2 inline-block mr-2">BASE</span>
             <span>LEADERBOARD</span>
           </h1>
-          <p className="mt-2 text-sm font-bold text-gray-500 uppercase tracking-widest pl-2">Data refreshes daily (UTC)</p>
+          <p className="mt-2 text-sm font-bold text-gray-500 uppercase tracking-widest pl-2">Data refreshes live</p>
         </div>
 
         {/* Search */}
@@ -63,83 +65,56 @@ export default function Home() {
       <div className="max-w-6xl mx-auto">
         {/* Tabs */}
         <div className="flex gap-4 mb-6 overflow-x-auto pb-2">
-          {['1d', '7d', '30d'].map(p => (
+          {['live', '1d', '7d', '30d'].map(p => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
               className={`
                       px-8 py-3 border-2 border-black font-black uppercase tracking-wide transition-all select-none
-                      ${period === p ? 'bg-black text-white shadow-[4px_4px_0px_0px_rgba(100,100,100,0.5)] translate-x-[2px] translate-y-[2px]' : 'bg-white hover:bg-gray-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:bg-blue-50'}
+                      ${period === p
+                  ? p === 'live'
+                    ? 'bg-green-500 text-white shadow-[4px_4px_0px_0px_rgba(100,100,100,0.5)] translate-x-[2px] translate-y-[2px]'
+                    : 'bg-black text-white shadow-[4px_4px_0px_0px_rgba(100,100,100,0.5)] translate-x-[2px] translate-y-[2px]'
+                  : 'bg-white hover:bg-gray-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:bg-blue-50'}
                    `}
             >
-              {p.toUpperCase()}
+              {p === 'live' ? '🔴 LIVE' : p.toUpperCase()}
             </button>
           ))}
         </div>
 
-        {/* Table */}
-        <div className="border-2 border-black bg-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-          <div className="grid grid-cols-12 border-b-2 border-black bg-blue-100 p-4 font-black uppercase text-sm tracking-widest text-black/80">
-            <div className="col-span-2 md:col-span-1">#</div>
-            <div className="col-span-7 md:col-span-5">Identity</div>
-            <div className="col-span-3 md:col-span-2 text-right hidden md:block">Buys</div>
-            <div className="col-span-3 md:col-span-2 text-right hidden md:block">Unique Posts</div>
-            <div className="col-span-3 md:col-span-2 text-right px-4 hidden md:block">Last Active</div>
-          </div>
+        {/* Content based on tab */}
+        {period === 'live' ? (
+          <LiveFeed />
+        ) : (
+          /* Leaderboard Table */
+          <div className="border-2 border-black bg-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+            <div className="grid grid-cols-12 border-b-2 border-black bg-blue-100 p-4 font-black uppercase text-sm tracking-widest text-black/80">
+              <div className="col-span-2 md:col-span-1">#</div>
+              <div className="col-span-7 md:col-span-5">Identity</div>
+              <div className="col-span-3 md:col-span-2 text-right hidden md:block">Buys</div>
+              <div className="col-span-3 md:col-span-2 text-right hidden md:block">Unique Posts</div>
+              <div className="col-span-3 md:col-span-2 text-right px-4 hidden md:block">Last Active</div>
+            </div>
 
-          <div className="divide-y-2 divide-black">
-            {loading ? (
-              <div className="p-12 text-center font-bold animate-pulse text-gray-400 text-xl">Loading Sketch...</div>
-            ) : results.length === 0 ? (
-              <div className="p-12 text-center flex flex-col items-center">
-                <div className="text-4xl mb-4">📭</div>
-                <div className="font-bold text-xl">No data found within this period.</div>
-                <div className="text-gray-500 mt-2">Try switching tabs or check back later!</div>
-              </div>
-            ) : (
-              results.map((row, i) => (
-                <div
-                  key={row.buyer_address}
-                  onClick={() => router.push(`/profile/${row.buyer_address}`)}
-                  className="grid grid-cols-12 p-4 items-center hover:bg-yellow-50 cursor-pointer transition-colors group"
-                >
-                  <div className="col-span-2 md:col-span-1 font-black text-xl text-gray-300 group-hover:text-black transition-colors">
-                    #{i + 1}
-                  </div>
-                  <div className="col-span-7 md:col-span-5 overflow-hidden">
-                    <IdentityCell
-                      address={row.buyer_address}
-                      initialName={row.buyer_basename}
-                      initialAvatar={row.buyer_avatar}
-                    />
-                  </div>
-                  <div className="col-span-3 md:col-span-2 text-right font-mono font-bold text-lg hidden md:block">
-                    {row.total_buy_events}
-                  </div>
-                  <div className="col-span-3 md:col-span-2 text-right font-mono font-bold text-lg text-blue-600 hidden md:block">
-                    {row.posts_bought}
-                  </div>
-                  <div className="col-span-3 md:col-span-2 text-right px-4 font-mono text-sm text-gray-500 hidden md:block">
-                    {row.last_active ? formatTimeAgo(row.last_active) : 'Recent'}
-                  </div>
+            <div className="divide-y-2 divide-black">
+              {loading ? (
+                <div className="p-12 text-center font-bold animate-pulse text-gray-400 text-xl">Loading Sketch...</div>
+              ) : results.length === 0 ? (
+                <div className="p-12 text-center flex flex-col items-center">
+                  <div className="text-4xl mb-4">📭</div>
+                  <div className="font-bold text-xl">No data found within this period.</div>
+                  <div className="text-gray-500 mt-2">Try switching tabs or check back later!</div>
                 </div>
-              ))
-            )}
+              ) : (
+                results.map((row, i) => (
+                  <PlayerRow key={row.buyer_address} row={row} rank={i + 1} />
+                ))
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
-}
-
-function formatTimeAgo(dateString: string) {
-  if (!dateString) return '';
-  const date = new Date(dateString);
-  const now = new Date();
-  const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
 }

@@ -1,6 +1,7 @@
-import { queryCDP } from "./cdp";
-import { db } from "./db";
-import { resolveNameIfMissing } from "./names";
+import { queryCDP } from './cdp';
+import { queryZoraSwaps } from './zora';
+import { db } from './db';
+import { resolveNameIfMissing } from './names';
 
 export async function ingestNewBuys() {
     console.log('🔄 Starting data ingestion...');
@@ -8,25 +9,25 @@ export async function ingestNewBuys() {
     // 1. Get Cursor
     let cursor = await db.getCursor("last_ingest_time");
 
-    // Default to 1 hour ago if no cursor (First Run)
+    // Default to 1 day ago if no cursor (First Run - Get Recent Data)
     if (!cursor) {
-        cursor = new Date(Date.now() - 60 * 60 * 1000).toISOString().replace('T', ' ').replace('Z', '');
+        cursor = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').replace('Z', '');
         console.log(`⚠️ No cursor found. Defaulting to: ${cursor}`);
     }
 
     console.log(`⏱️ Querying since: ${cursor}`);
 
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    // CTE window for content coins
+    const cteDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
         .toISOString().replace('T', ' ').replace('Z', '');
 
     // 2. Query CDP (Incremental)
-    const sql = `
+    const cdpSql = `
         WITH content_coins AS (
             SELECT DISTINCT CAST(parameters['coin'] AS VARCHAR) AS token_address
             FROM base.events
-            WHERE address = '0x77777777751622c0d3258f214f9df38e35bf45baf3'
-            AND event_name IN ('CoinCreated', 'CoinCreatedV4', 'CreatorCoinCreated')
-            AND block_timestamp > '${sevenDaysAgo}'
+            WHERE event_name IN ('CoinCreated', 'CoinCreatedV4', 'CreatorCoinCreated')
+            AND block_timestamp > '${cteDaysAgo}'
         ),
         recent_buys AS (
             SELECT
@@ -41,39 +42,84 @@ export async function ingestNewBuys() {
             AND t.block_timestamp > '${cursor}'
             ORDER BY t.block_timestamp ASC
         )
-        SELECT * FROM recent_buys
+        SELECT * FROM recent_buys LIMIT 1000
     `;
 
+    let allBuys: any[] = [];
+
+    // Fetch from CDP
     try {
-        const rows = await queryCDP(sql);
-        console.log(`✅ Found ${rows.length} new buy events.`);
-
-        if (rows.length === 0) {
-            // Even if no rows, update cursor to now? No, stick to last found or keep old?
-            // Better to set cursor to now() to avoid re-scanning the last empty window forever?
-            // But if we miss data due to latency...
-            // Let's stick to updating cursor only on rows for now to be safe.
-            return;
-        }
-
-        // 3. Process Rows
-        for (const row of rows) {
-            await db.insertBuy({
-                buyer: row.buyer,
-                post_token: row.post_token,
-                block_time: row.block_time,
-                tx_hash: row.tx_hash
-            });
-            await resolveNameIfMissing(row.buyer);
-        }
-
-        // 4. Update Cursor
-        const lastTime = rows[rows.length - 1].block_time;
-        await db.setCursor("last_ingest_time", lastTime);
-        console.log(`💾 Updated cursor to: ${lastTime}`);
-
+        const cdpRows = await queryCDP(cdpSql);
+        console.log(`✅ CDP: Found ${cdpRows.length} buy events`);
+        allBuys = [...cdpRows.map((r: any) => ({ ...r, source: 'cdp' }))];
     } catch (e) {
-        console.error('❌ Ingestion Failed:', e);
-        throw e;
+        console.error('❌ CDP query failed:', e);
     }
+
+    // Fetch from Zora API
+    try {
+        const zoraRows = await queryZoraSwaps(500);
+        console.log(`✅ Zora: Found ${zoraRows.length} buy events`);
+
+        // Filter Zora results to match our cursor window
+        const cursorTime = new Date(cursor).getTime();
+        const filteredZora = zoraRows.filter((r: any) => {
+            const rowTime = new Date(r.block_time).getTime();
+            return rowTime > cursorTime;
+        });
+
+        allBuys = [...allBuys, ...filteredZora];
+    } catch (e) {
+        console.error('❌ Zora query failed:', e);
+    }
+
+    console.log(`📊 Total: ${allBuys.length} buy events from both sources`);
+
+    if (allBuys.length === 0) {
+        console.log('ℹ️ No new buys found.');
+        return { message: 'No new data', count: 0 };
+    }
+
+    // 3. Insert into DB and Resolve Names
+    let newCursor = cursor;
+    let insertedCount = 0;
+
+    for (const row of allBuys) {
+        if (!row.buyer || !row.post_token) continue;
+
+        const buyerAddr = row.buyer.toLowerCase();
+        const blockTime = row.block_time;
+
+        await db.insertBuy({
+            buyer: buyerAddr,
+            post_token: row.post_token.toLowerCase(),
+            block_time: blockTime,
+            tx_hash: row.tx_hash
+        });
+        insertedCount++;
+
+        // Resolve name (with contract detection, Neynar, Zora profiles)
+        await resolveNameIfMissing(buyerAddr);
+
+        // If Zora gave us a name, save it directly
+        if (row.buyer_name) {
+            await db.saveName({
+                address: buyerAddr,
+                name: row.buyer_name,
+                source: 'zora_api',
+                is_contract: false
+            });
+        }
+
+        // Track latest timestamp
+        if (blockTime > newCursor) {
+            newCursor = blockTime;
+        }
+    }
+
+    // 4. Update Cursor
+    await db.setCursor("last_ingest_time", newCursor);
+
+    console.log(`✅ Ingested ${insertedCount} buys. New cursor: ${newCursor}`);
+    return { message: 'Ingestion complete', count: insertedCount };
 }

@@ -6,26 +6,24 @@ interface IdentityCellProps {
     address?: string;
     initialName?: string;
     initialAvatar?: string;
+    isContract?: boolean;
 }
 
-export const IdentityCell = ({ address, initialName, initialAvatar }: IdentityCellProps) => {
+export const IdentityCell = ({ address, initialName, initialAvatar, isContract }: IdentityCellProps) => {
     const [displayName, setDisplayName] = useState<string | undefined>(initialName);
     const [avatar, setAvatar] = useState<string | undefined>(initialAvatar);
 
     useEffect(() => {
         if (!initialName && address) {
             // Fetch from API (Browser will cache this automatically)
+            // Note: API resolve-name assumes pure user logic usually, but isContract might be unknown if not passed initially.
             fetch(`/api/resolve-name?address=${address}`)
                 .then(res => res.json())
                 .then(data => {
-                    if (data.displayName) {
-                        setDisplayName(data.displayName);
-                    } else if (data.name) {
-                        setDisplayName(data.name);
-                    }
-                    if (data.avatar) {
-                        setAvatar(data.avatar);
-                    }
+                    if (data.displayName) setDisplayName(data.displayName);
+                    else if (data.name) setDisplayName(data.name);
+
+                    if (data.avatar) setAvatar(data.avatar);
                 })
                 .catch(err => console.error('Failed to resolve identity:', err));
         }
@@ -40,20 +38,24 @@ export const IdentityCell = ({ address, initialName, initialAvatar }: IdentityCe
                 <img
                     src={avatar}
                     alt={display}
-                    className="w-10 h-10 rounded-full object-cover border-2 border-blue-500"
-                    onError={(e) => {
-                        (e.target as HTMLImageElement).style.visibility = 'hidden';
-                        (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-                    }}
+                    className="w-10 h-10 rounded-full object-cover border-2 border-black"
                 />
             ) : (
-                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center text-sm font-bold text-white">
-                    {display[0]?.toUpperCase() || '?'}
+                <div className={`w-10 h-10 rounded-full border-2 border-black flex items-center justify-center text-sm font-bold text-black ${isContract ? 'bg-gray-200' : 'bg-yellow-100'}`}>
+                    {isContract ? '🤖' : (display[0]?.toUpperCase() || '?')}
                 </div>
             )}
-            <span className={isBasename ? "text-blue-400 font-medium" : "text-gray-300 font-mono"}>
-                {isBasename ? '@' : ''}{display}
-            </span>
+
+            <div className="flex flex-col">
+                <span className={`font-bold ${isBasename ? "text-blue-600" : "text-black"}`}>
+                    {isBasename ? '@' : ''}{display}
+                </span>
+                {isContract && (
+                    <span className="text-[10px] bg-gray-900 text-white px-1.5 py-0.5 rounded font-mono uppercase tracking-wide w-fit border border-black">
+                        Contract
+                    </span>
+                )}
+            </div>
         </div>
     );
 };

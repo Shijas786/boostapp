@@ -27,9 +27,20 @@ sql.exec(`
         address TEXT PRIMARY KEY,
         name TEXT,
         source TEXT,
+        is_contract INTEGER DEFAULT 0,
+        fid INTEGER,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 `);
+
+// Migration for existing local DBs
+try {
+    sql.exec('ALTER TABLE names ADD COLUMN is_contract INTEGER DEFAULT 0');
+} catch (e) { }
+
+try {
+    sql.exec('ALTER TABLE names ADD COLUMN fid INTEGER');
+} catch (e) { }
 
 export const dbSqlite = {
     // Cursors
@@ -57,11 +68,13 @@ export const dbSqlite = {
     getName: async (address: string): Promise<{ name: string | null } | null> => {
         return sql.prepare('SELECT name FROM names WHERE address = ?').get(address) as { name: string | null } | null;
     },
-    saveName: async (data: { address: string, name: string | null, source: string }) => {
+    saveName: async (data: { address: string, name: string | null, source: string, is_contract?: boolean, fid?: number }) => {
+        const isContractInt = data.is_contract ? 1 : 0;
+        const fidVal = data.fid || null;
         sql.prepare(`
-            INSERT OR REPLACE INTO names (address, name, source, updated_at)
-            VALUES (@address, @name, @source, CURRENT_TIMESTAMP)
-        `).run(data);
+            INSERT OR REPLACE INTO names (address, name, source, is_contract, fid, updated_at)
+            VALUES (@address, @name, @source, ${isContractInt}, @fid, CURRENT_TIMESTAMP)
+        `).run({ ...data, fid: fidVal });
     },
 
     // Leaderboard Query
@@ -81,11 +94,14 @@ export const dbSqlite = {
                 COUNT(DISTINCT b.post_token) as posts_bought,
                 COUNT(*) as total_buy_events,
                 MAX(b.block_time) as last_active,
-                n.name as buyer_basename,
-                n.name as buyer_avatar
+                MAX(n.name) as buyer_basename,
+                MAX(n.name) as buyer_avatar,
+                MAX(n.is_contract) as buyer_is_contract,
+                MAX(n.fid) as buyer_fid
             FROM buys b
             LEFT JOIN names n ON b.buyer = n.address
             WHERE b.block_time > ?
+            AND (n.is_contract IS NULL OR n.is_contract = 0)
             GROUP BY b.buyer
             ORDER BY posts_bought DESC
             LIMIT ?
