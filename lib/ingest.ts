@@ -26,30 +26,24 @@ export async function ingestNewBuys() {
     const cteDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
         .toISOString().replace('T', ' ').replace('Z', '');
 
-    // 2. Query CDP (Using base.events + ClickHouse Syntax)
-    // FIX: CDP uses ClickHouse under the hood. 
-    // - Use toString() to convert Variant to String.
-    // - Use LOWER() for safe joins.
+    // 2. Query CDP (Using base.events)
+    // FIX: Use WHERE IN (Subquery) pattern which is more robust than JOINs in this dialect.
+    // Use CAST(... AS String) for type safety.
     const cdpSql = `
-        WITH content_coins AS (
-            SELECT DISTINCT LOWER(toString(parameters['coin'])) AS token_address
+        SELECT 
+            block_timestamp,
+            transaction_hash as tx_hash,
+            address as post_token,
+            CAST(parameters['to'] AS String) as buyer
+        FROM base.events
+        WHERE event_name = 'Transfer'
+        AND block_timestamp > '${cursor}'
+        AND CAST(address AS String) IN (
+            SELECT DISTINCT CAST(parameters['coin'] AS String)
             FROM base.events
             WHERE event_name IN ('CoinCreated', 'CoinCreatedV4', 'CreatorCoinCreated')
             AND block_timestamp > '${cteDaysAgo}'
-        ),
-        recent_buys AS (
-            SELECT 
-                t.block_timestamp,
-                t.transaction_hash as tx_hash,
-                t.address as post_token,
-                toString(t.parameters['to']) as buyer
-            FROM base.events t
-            JOIN content_coins cc ON LOWER(t.address) = cc.token_address
-            WHERE t.event_name = 'Transfer'
-            AND t.block_timestamp > '${cursor}'
-            ORDER BY t.block_timestamp ASC
         )
-        SELECT * FROM recent_buys
         ORDER BY block_timestamp ASC
         LIMIT 1000
     `;
