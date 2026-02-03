@@ -1,81 +1,63 @@
 -- Enable necessary extensions
 create extension if not exists "uuid-ossp";
 
--- Cursors Table
+-- Cursors Table (to track ingestion progress)
 create table if not exists cursors (
   key text primary key,
   value text
 );
 
--- Buys Table
+-- Table 1: buys (raw events only)
 create table if not exists buys (
-  id bigint primary key generated always as identity,
+  id bigint generated always as identity primary key,
   buyer text not null,
   post_token text not null,
-  block_time timestamp with time zone not null,
+  block_time timestamptz not null,
   tx_hash text not null,
-  unique(tx_hash, post_token)
+  unique(tx_hash, post_token) -- prevent duplicates
 );
 
--- Names Table
-create table if not exists names (
+-- Table 2: identities (cached names & social info)
+create table if not exists identities (
   address text primary key,
-  name text,
-  source text,
-  is_contract boolean default false,
-  fid bigint,
-  updated_at timestamp with time zone default now()
+  base_name text,
+  ens text,
+  farcaster_username text,
+  farcaster_fid bigint,
+  avatar_url text,
+  updated_at timestamptz default now()
 );
 
--- Indexes
-create index if not exists buys_buyer_idx on buys(buyer);
-create index if not exists buys_block_time_idx on buys(block_time);
+-- Indexes (Important for performance)
+create index if not exists idx_buys_time on buys(block_time);
+create index if not exists idx_buys_buyer on buys(buyer);
+create index if not exists idx_buys_post_token on buys(post_token);
 
--- RPC: Get Leaderboard
-create or replace function get_leaderboard(period_days int default 7, limit_count int default 100)
+-- RPC: Get Leaderboard (Optimized for the new identities table)
+create or replace function get_leaderboard(period_days int default 7, limit_count int default 20)
 returns table (
   buyer_address text,
-  posts_bought bigint,
-  total_buy_events bigint,
-  last_active timestamp with time zone,
-  buyer_basename text,
-  buyer_avatar text,
-  buyer_is_contract boolean,
-  buyer_fid bigint
+  buys_count bigint,
+  last_active timestamptz,
+  base_name text,
+  farcaster_username text,
+  avatar_url text,
+  farcaster_fid bigint
 )
 language sql
 as $$
   select 
     b.buyer as buyer_address,
-    count(distinct b.post_token) as posts_bought,
-    count(*) as total_buy_events,
+    count(*) as buys_count,
     max(b.block_time) as last_active,
-    MAX(n.name) as buyer_basename,
-    MAX(n.name) as buyer_avatar,
-    MAX(n.is_contract::int)::boolean as buyer_is_contract,
-    MAX(n.fid) as buyer_fid
+    i.base_name,
+    i.farcaster_username,
+    i.avatar_url,
+    i.farcaster_fid
   from buys b
-  left join names n on b.buyer = n.address
+  left join identities i on b.buyer = i.address
   where b.block_time > (now() - (period_days || ' days')::interval)
-  and (n.is_contract IS NULL OR n.is_contract = false)
-  group by b.buyer
-  order by posts_bought desc
+  group by b.buyer, i.base_name, i.farcaster_username, i.avatar_url, i.farcaster_fid
+  order by buys_count desc
   limit limit_count;
-$$;
-
--- RPC: Get Profile Stats
-create or replace function get_profile_stats(check_address text)
-returns table (
-  total_buys bigint,
-  unique_creators bigint,
-  last_buy_time timestamp with time zone
-)
-language sql
-as $$
-  select 
-    count(*) as total_buys,
-    count(distinct post_token) as unique_creators,
-    max(block_time) as last_buy_time
-  from buys
-  where buyer = check_address;
 $$;

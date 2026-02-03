@@ -26,16 +26,17 @@ export function PlayerRow({ row, rank }: PlayerRowProps) {
             <div className="col-span-7 md:col-span-5 overflow-hidden">
                 <IdentityCell
                     address={row.buyer_address}
-                    initialName={row.buyer_basename}
-                    initialAvatar={row.buyer_avatar}
-                    isContract={row.buyer_is_contract}
+                    initialBaseName={row.base_name}
+                    initialFarcasterName={row.farcaster_username}
+                    initialAvatar={row.avatar_url}
                 />
             </div>
             <div className="col-span-3 md:col-span-2 text-right font-mono font-bold text-lg hidden md:block">
-                {row.total_buy_events}
+                {row.buys_count}
             </div>
+            {/* Keeping the column structure but highlighting buys_count more simply */}
             <div className="col-span-3 md:col-span-2 text-right font-mono font-bold text-lg text-blue-600 hidden md:block">
-                {row.posts_bought}
+                --
             </div>
             <div className="col-span-3 md:col-span-2 text-right px-4 font-mono text-sm text-gray-500 hidden md:block">
                 <TimeAgo date={row.last_active} />

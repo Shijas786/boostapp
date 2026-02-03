@@ -16,7 +16,7 @@ export default function Home() {
     if (p === 'live') return; // Live tab has its own component
     setLoading(true);
     try {
-      const res = await fetch(`/api/top-buyers?period=${p}`);
+      const res = await fetch(`/api/leaderboard?period=${p}`);
       const data = await res.json();
       setResults(data.data || []);
     } catch (e) {
@@ -92,8 +92,8 @@ export default function Home() {
             <div className="grid grid-cols-12 border-b-2 border-black bg-blue-100 p-4 font-black uppercase text-sm tracking-widest text-black/80">
               <div className="col-span-2 md:col-span-1">#</div>
               <div className="col-span-7 md:col-span-5">Identity</div>
-              <div className="col-span-3 md:col-span-2 text-right hidden md:block">Buys</div>
-              <div className="col-span-3 md:col-span-2 text-right hidden md:block">Unique Posts</div>
+              <div className="col-span-3 md:col-span-2 text-right hidden md:block">Total Buys</div>
+              <div className="col-span-3 md:col-span-2 text-right hidden md:block">-</div>
               <div className="col-span-3 md:col-span-2 text-right px-4 hidden md:block">Last Active</div>
             </div>
 

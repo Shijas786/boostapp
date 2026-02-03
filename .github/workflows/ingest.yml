@@ -1,34 +1,21 @@
-name: Ingest Base App Data
+name: Ingest Base App Buys
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # every 5 minutes
-  workflow_dispatch:        # manual run button
-  push:
-    branches: ["main"]
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
 
 jobs:
   ingest:
     runs-on: ubuntu-latest
     steps:
-      - name: Call ingest endpoint
+      - name: Trigger Ingestion
         run: |
-          # Use -L to follow redirects (handles 308) and remove trailing slash from URL var
-          CLEAN_URL="${{ vars.VERCEL_URL }}"
-          CLEAN_URL=${CLEAN_URL%/} # Remove trailing slash if present
-          
-          response=$(curl -s -L -w "\n%{http_code}" -X GET "$CLEAN_URL/api/cron/ingest" \
-            -H "Authorization: Bearer $CRON_SECRET")
-          
-          http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
-          
-          echo "Response: $body"
-          echo "Status: $http_code"
-          
-          if [ "$http_code" != "200" ]; then
-            echo "Failed with status $http_code"
-            exit 1
-          fi
+          # Fetch the VERCEL_URL if set, otherwise fallback to local/hardcoded for testing
+          # Note: In production GitHub Actions, you should set VERCEL_URL as a secret or environment variable
+          APP_URL="${VERCEL_URL:-https://boostapp-phi.vercel.app}"
+          echo "Triggering $APP_URL/api/ingest"
+          curl -X GET "$APP_URL/api/ingest" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
         env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}

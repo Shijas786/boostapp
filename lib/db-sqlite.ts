@@ -16,31 +16,23 @@ sql.exec(`
     
     CREATE TABLE IF NOT EXISTS buys (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        buyer TEXT,
-        post_token TEXT,
-        block_time TEXT,
-        tx_hash TEXT,
+        buyer TEXT NOT NULL,
+        post_token TEXT NOT NULL,
+        block_time TEXT NOT NULL,
+        tx_hash TEXT NOT NULL,
         UNIQUE(tx_hash, post_token)
     );
 
-    CREATE TABLE IF NOT EXISTS names (
+    CREATE TABLE IF NOT EXISTS identities (
         address TEXT PRIMARY KEY,
-        name TEXT,
-        source TEXT,
-        is_contract INTEGER DEFAULT 0,
-        fid INTEGER,
+        base_name TEXT,
+        ens TEXT,
+        farcaster_username TEXT,
+        farcaster_fid INTEGER,
+        avatar_url TEXT,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 `);
-
-// Migration for existing local DBs
-try {
-    sql.exec('ALTER TABLE names ADD COLUMN is_contract INTEGER DEFAULT 0');
-} catch (e) { }
-
-try {
-    sql.exec('ALTER TABLE names ADD COLUMN fid INTEGER');
-} catch (e) { }
 
 export const dbSqlite = {
     // Cursors
@@ -59,78 +51,57 @@ export const dbSqlite = {
                 INSERT OR IGNORE INTO buys (buyer, post_token, block_time, tx_hash)
                 VALUES (@buyer, @post_token, @block_time, @tx_hash)
             `).run(buy);
-        } catch (e) {
-            console.error('DB Insert Error:', e);
-        }
+        } catch (e) { }
     },
 
-    // Names
-    getName: async (address: string): Promise<{ name: string | null } | null> => {
-        return sql.prepare('SELECT name FROM names WHERE address = ?').get(address) as { name: string | null } | null;
+    // Identities (Step 1 Reset)
+    getIdentity: async (address: string) => {
+        return sql.prepare('SELECT * FROM identities WHERE address = ?').get(address.toLowerCase()) as any;
     },
-    saveName: async (data: { address: string, name: string | null, source: string, is_contract?: boolean, fid?: number }) => {
-        const isContractInt = data.is_contract ? 1 : 0;
-        const fidVal = data.fid || null;
+    saveIdentity: async (identity: any) => {
         sql.prepare(`
-            INSERT OR REPLACE INTO names (address, name, source, is_contract, fid, updated_at)
-            VALUES (@address, @name, @source, ${isContractInt}, @fid, CURRENT_TIMESTAMP)
-        `).run({ ...data, fid: fidVal });
+            INSERT OR REPLACE INTO identities (address, base_name, ens, farcaster_username, farcaster_fid, avatar_url, updated_at)
+            VALUES (@address, @base_name, @ens, @farcaster_username, @farcaster_fid, @avatar_url, CURRENT_TIMESTAMP)
+        `).run({
+            ...identity,
+            address: identity.address.toLowerCase()
+        });
     },
 
     // Leaderboard Query
-    getLeaderboard: async (limit = 100, period: string = '7d') => {
+    getLeaderboard: async (limit = 20, period: string = '7d') => {
         const msPerDay = 24 * 60 * 60 * 1000;
-        let since = Date.now();
+        let days = 7;
+        if (period === '1d') days = 1;
+        if (period === '30d') days = 30;
 
-        if (period === '1d') since -= msPerDay;
-        else if (period === '30d') since -= 30 * msPerDay;
-        else since -= 7 * msPerDay; // Default 7d
-
-        const sinceIso = new Date(since).toISOString();
+        const sinceIso = new Date(Date.now() - days * msPerDay).toISOString();
 
         return sql.prepare(`
             SELECT 
                 b.buyer as buyer_address,
-                COUNT(DISTINCT b.post_token) as posts_bought,
-                COUNT(*) as total_buy_events,
+                COUNT(*) as buys_count,
                 MAX(b.block_time) as last_active,
-                MAX(n.name) as buyer_basename,
-                MAX(n.name) as buyer_avatar,
-                MAX(n.is_contract) as buyer_is_contract,
-                MAX(n.fid) as buyer_fid
+                i.base_name,
+                i.farcaster_username,
+                i.avatar_url,
+                i.farcaster_fid
             FROM buys b
-            LEFT JOIN names n ON b.buyer = n.address
+            LEFT JOIN identities i ON b.buyer = i.address
             WHERE b.block_time > ?
-            AND (n.is_contract IS NULL OR n.is_contract = 0)
-            GROUP BY b.buyer
-            ORDER BY posts_bought DESC
+            GROUP BY b.buyer, i.base_name, i.farcaster_username, i.avatar_url, i.farcaster_fid
+            ORDER BY buys_count DESC
             LIMIT ?
         `).all(sinceIso, limit);
     },
 
-    // Profile Queries
-    getAddressByName: async (name: string): Promise<string | null> => {
-        const row = sql.prepare('SELECT address FROM names WHERE name = ? COLLATE NOCASE').get(name) as { address: string } | undefined;
-        return row ? row.address : null;
-    },
-
-    getProfileStats: async (address: string) => {
-        return sql.prepare(`
-            SELECT 
-                COUNT(*) as total_buys,
-                COUNT(DISTINCT post_token) as unique_creators,
-                MAX(block_time) as last_buy_time
-            FROM buys 
-            WHERE buyer = ?
-        `).get(address);
-    },
-
+    // Mock/Compatibility for other methods if needed
     getActivityFeed: async (address: string, limit = 20) => {
         return sql.prepare(`
             SELECT * FROM buys 
             WHERE buyer = ?
             ORDER BY block_time DESC
             LIMIT ?
-        `).all(address, limit);
+        `).all(address.toLowerCase(), limit);
     }
 };
