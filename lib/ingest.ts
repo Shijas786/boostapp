@@ -11,14 +11,18 @@ export async function ingestNewBuys() {
 
     // Default to 1 day ago if no cursor (First Run - Get Recent Data)
     if (!cursor) {
-        cursor = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').replace('Z', '');
+        cursor = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         console.log(`⚠️ No cursor found. Defaulting to: ${cursor}`);
     }
+
+    // SANITIZE: Ensure format is YYYY-MM-DD HH:MM:SS.mmm
+    // Remove T, Z, and any +00:00 offset
+    cursor = cursor.replace('T', ' ').replace('Z', '').split('+')[0];
 
     console.log(`⏱️ Querying since: ${cursor}`);
 
     // CTE window for content coins
-    const cteDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    const cteDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
         .toISOString().replace('T', ' ').replace('Z', '');
 
     // 2. Query CDP (Incremental)
@@ -42,8 +46,11 @@ export async function ingestNewBuys() {
             AND t.block_timestamp > '${cursor}'
             ORDER BY t.block_timestamp ASC
         )
-        SELECT * FROM recent_buys LIMIT 1000
+        SELECT * FROM recent_buys
+        ORDER BY block_timestamp ASC
+        LIMIT 1000
     `;
+    console.log('[DEBUG] CDP SQL:', cdpSql);
 
     let allBuys: any[] = [];
 
