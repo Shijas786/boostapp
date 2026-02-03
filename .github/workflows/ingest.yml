@@ -13,7 +13,11 @@ jobs:
     steps:
       - name: Call ingest endpoint
         run: |
-          response=$(curl -s -w "\n%{http_code}" -X GET "${{ vars.VERCEL_URL }}/api/cron/ingest" \
+          # Use -L to follow redirects (handles 308) and remove trailing slash from URL var
+          CLEAN_URL="${{ vars.VERCEL_URL }}"
+          CLEAN_URL=${CLEAN_URL%/} # Remove trailing slash if present
+          
+          response=$(curl -s -L -w "\n%{http_code}" -X GET "$CLEAN_URL/api/cron/ingest" \
             -H "Authorization: Bearer $CRON_SECRET")
           
           http_code=$(echo "$response" | tail -n1)
