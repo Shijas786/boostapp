@@ -21,9 +21,8 @@ export async function ingestNewBuys() {
 
     console.log(`⏱️ Querying since: ${cursor}`);
 
-    // CTE window for content coins (Revert to 14 days - stability check)
-    const cteDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
-        .toISOString().replace('T', ' ').replace('Z', '');
+    // CTE window: REMOVED timestamp filter to capture buys of ALL coins (even old ones)
+    // const cteDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)...
 
     // 2. Query CDP (Incremental)
     const cdpSql = `
@@ -31,7 +30,6 @@ export async function ingestNewBuys() {
             SELECT DISTINCT CAST(parameters['coin'] AS VARCHAR) AS token_address
             FROM base.events
             WHERE event_name IN ('CoinCreated', 'CoinCreatedV4', 'CreatorCoinCreated')
-            AND block_timestamp > '${cteDaysAgo}'
         ),
         recent_buys AS (
             SELECT 
