@@ -6,13 +6,15 @@ interface IdentityCellProps {
     address: string;
     initialBaseName?: string;
     initialFarcasterName?: string;
+    initialEnsName?: string;
     initialAvatar?: string;
 }
 
-export const IdentityCell = ({ address, initialBaseName, initialFarcasterName, initialAvatar }: IdentityCellProps) => {
+export const IdentityCell = ({ address, initialBaseName, initialFarcasterName, initialEnsName, initialAvatar }: IdentityCellProps) => {
     const [id, setId] = useState<any>({
         base_name: initialBaseName,
         farcaster_username: initialFarcasterName,
+        ens_name: initialEnsName,
         avatar_url: initialAvatar
     });
 
@@ -20,11 +22,12 @@ export const IdentityCell = ({ address, initialBaseName, initialFarcasterName, i
         setId({
             base_name: initialBaseName,
             farcaster_username: initialFarcasterName,
+            ens_name: initialEnsName,
             avatar_url: initialAvatar
         });
 
         // Resolve if no identity provided at all
-        if (!initialBaseName && !initialFarcasterName) {
+        if (!initialBaseName && !initialFarcasterName && !initialEnsName) {
             fetch(`/api/identity?address=${address}`)
                 .then(res => res.json())
                 .then(data => {
@@ -32,11 +35,12 @@ export const IdentityCell = ({ address, initialBaseName, initialFarcasterName, i
                 })
                 .catch(err => console.error('Failed to resolve identity:', err));
         }
-    }, [address, initialBaseName, initialFarcasterName, initialAvatar]);
+    }, [address, initialBaseName, initialFarcasterName, initialEnsName, initialAvatar]);
 
-    const displayName = id.base_name || id.farcaster_username || `${address.slice(0, 6)}...${address.slice(-4)}`;
+    const displayName = id.base_name || id.farcaster_username || id.ens_name || `${address.slice(0, 6)}...${address.slice(-4)}`;
     const isBase = !!id.base_name;
     const isFc = !!id.farcaster_username && !isBase;
+    const isEns = !!id.ens_name && !isBase && !isFc;
 
     return (
         <div className="flex items-center space-x-3">
@@ -53,7 +57,7 @@ export const IdentityCell = ({ address, initialBaseName, initialFarcasterName, i
             )}
 
             <div className="flex flex-col">
-                <span className={`font-bold ${isBase ? "text-blue-600" : isFc ? "text-purple-600" : "text-black"}`}>
+                <span className={`font-bold ${isBase ? "text-blue-600" : isFc ? "text-purple-600" : isEns ? "text-green-600" : "text-black"}`}>
                     {displayName}
                 </span>
                 <span className="text-[10px] text-gray-400 font-mono">

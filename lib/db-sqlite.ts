@@ -41,6 +41,12 @@ sql.exec(`
         PRIMARY KEY (wallet, post_token)
     );
     CREATE INDEX IF NOT EXISTS idx_holdings_wallet ON holdings(wallet);
+
+    CREATE TABLE IF NOT EXISTS tracked_tokens (
+        address TEXT PRIMARY KEY,
+        first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_synced_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
 `);
 
 export const dbSqlite = {
@@ -163,5 +169,10 @@ export const dbSqlite = {
 
     getProfileHoldings: async (address: string) => {
         return sql.prepare('SELECT * FROM holdings WHERE wallet = ?').all(address.toLowerCase()) as any[];
+    },
+
+    getTrackedTokens: async () => {
+        const rows = sql.prepare('SELECT address FROM tracked_tokens').all() as { address: string }[];
+        return rows.map(r => r.address.toLowerCase());
     }
 };

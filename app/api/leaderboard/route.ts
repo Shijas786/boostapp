@@ -8,7 +8,7 @@ export async function GET(request: Request) {
     const period = searchParams.get('period') || '7d';
 
     try {
-        const results = await db.getLeaderboard(20, period);
+        const results = await db.getLeaderboard(100, period);
 
         return NextResponse.json({
             ok: true,

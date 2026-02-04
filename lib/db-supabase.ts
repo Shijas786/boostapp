@@ -43,8 +43,12 @@ export const dbSupabase = {
     saveIdentity: async (identity: any) => {
         if (!supabase) return;
         await supabase.from('identities').upsert({
-            ...identity,
             address: identity.address.toLowerCase(),
+            base_name: identity.baseName || identity.base_name,
+            ens: identity.ensName || identity.ens,
+            farcaster_username: identity.farcasterUsername || identity.farcaster_username,
+            farcaster_fid: identity.farcasterFid || identity.farcaster_fid,
+            avatar_url: identity.avatarUrl || identity.avatar_url,
             updated_at: new Date().toISOString()
         });
     },
@@ -56,16 +60,31 @@ export const dbSupabase = {
         if (period === '1d') days = 1;
         if (period === '30d') days = 30;
 
+        // Fetch extra rows to account for filtered bots/contracts
         const { data, error } = await supabase.rpc('get_leaderboard', {
             period_days: days,
-            limit_count: limit
+            limit_count: 5000 // Fetch deep to find humans
         });
 
         if (error) {
             console.error('Supabase Leaderboard Error:', error);
             return [];
         }
-        return data || [];
+
+        // Filter for "real humans" (Verified identities only)
+        const filtered = (data || [])
+            .filter((r: any) => {
+                const isBot = (name: string) => name && (name.toLowerCase().includes('bot') || name.toLowerCase().includes('contract'));
+                if (isBot(r.ens_name) || isBot(r.base_name)) return false;
+
+                const isRealBaseName = r.base_name && r.base_name.length > 5 && !r.base_name.startsWith('0x');
+                const isRealFarcaster = r.farcaster_username && r.farcaster_username.length > 2 && !r.farcaster_username.startsWith('0x');
+                const isRealENS = r.ens_name && r.ens_name.includes('.') && !r.ens_name.startsWith('0x');
+
+                return isRealBaseName || isRealFarcaster || isRealENS;
+            }).slice(0, limit);
+
+        return filtered;
     },
 
     getActivityFeed: async (address: string = '', limit = 50) => {
@@ -117,5 +136,11 @@ export const dbSupabase = {
             .select('*')
             .eq('wallet', address.toLowerCase());
         return data || [];
+    },
+
+    getTrackedTokens: async () => {
+        if (!supabase) return [];
+        const { data } = await supabase.from('tracked_tokens').select('address');
+        return (data || []).map(t => t.address.toLowerCase());
     }
 };

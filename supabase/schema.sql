@@ -55,7 +55,10 @@ ALTER TABLE buys ADD CONSTRAINT buys_tx_hash_post_token_buyer_key UNIQUE (tx_has
 -- RPC: Get Leaderboard (Optimized for the new identities table)
 DROP FUNCTION IF EXISTS get_leaderboard(int, int);
 
-CREATE OR REPLACE FUNCTION get_leaderboard(period_days int default 7, limit_count int default 20)
+CREATE OR REPLACE FUNCTION get_leaderboard(
+  period_days int default 7,
+  limit_count int default 20
+)
 RETURNS TABLE (
   buyer_address text,
   total_buys bigint,
@@ -63,6 +66,7 @@ RETURNS TABLE (
   last_active timestamptz,
   base_name text,
   farcaster_username text,
+  ens_name text,
   avatar_url text,
   farcaster_fid bigint
 )
@@ -75,12 +79,20 @@ AS $$
     MAX(b.block_time) as last_active,
     i.base_name,
     i.farcaster_username,
+    i.ens as ens_name,
     i.avatar_url,
     i.farcaster_fid
   FROM buys b
   LEFT JOIN identities i ON b.buyer = i.address
-  WHERE b.block_time > (now() - (period_days || ' days')::interval)
-  GROUP BY b.buyer, i.base_name, i.farcaster_username, i.avatar_url, i.farcaster_fid
+  WHERE b.block_time > (now() - make_interval(days => period_days))
+  GROUP BY b.buyer, i.base_name, i.farcaster_username, i.ens, i.avatar_url, i.farcaster_fid
   ORDER BY unique_posts DESC, total_buys DESC
   LIMIT limit_count;
 $$;
+
+-- Table 4: tracked_tokens (all discovered creator coins)
+create table if not exists tracked_tokens (
+  address text primary key,
+  first_seen timestamptz default now(),
+  last_synced_at timestamptz default now()
+);

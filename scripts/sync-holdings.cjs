@@ -11,70 +11,64 @@ async function main() {
 
     const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
     const apiKey = env.CDP_API_KEY;
-    const url = 'https://api.cdp.coinbase.com/platform/v2/data/query/run';
-    const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-    };
 
-    console.log('🔄 Fetching all unique tokens from DB...');
+    console.log('🔄 Fetching managed tokens from DB...');
     const { data: tokenData } = await supabase.from('buys').select('post_token');
-    if (!tokenData) return;
+    const managedTokens = new Set((tokenData || []).map(t => t.post_token.toLowerCase()));
+    console.log(`📊 Tracking ${managedTokens.size} unique creator tokens.`);
 
-    const uniqueTokens = Array.from(new Set(tokenData.map(t => t.post_token)));
-    console.log(`📊 Found ${uniqueTokens.length} unique tokens to check.`);
+    console.log('👥 Fetching all buyers...');
+    const { data: buyersData, error: bError } = await supabase.from('buys').select('buyer');
 
-    // Process in batches of 500 to stay safe with query size
-    const BATCH_SIZE = 500;
-    for (let i = 0; i < uniqueTokens.length; i += BATCH_SIZE) {
-        const batch = uniqueTokens.slice(i, i + BATCH_SIZE);
-        console.log(`📦 Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(uniqueTokens.length / BATCH_SIZE)}...`);
+    if (bError) {
+        console.error('❌ Supabase Buyers Error:', bError.message);
+        return;
+    }
 
-        const tokensList = batch.map(t => `'${t}'`).join(',');
+    const uniqueBuyers = Array.from(new Set((buyersData || []).map(b => b.buyer.toLowerCase())));
+    console.log(`👤 Found ${uniqueBuyers.length} buyers to sync.`);
 
-        const sql = `
-            SELECT wallet, token, SUM(delta) as balance
-            FROM (
-                SELECT toString(parameters['to']) as wallet, address as token, toInt256OrZero(toString(parameters['value'])) as delta
-                FROM base.events
-                WHERE event_name = 'Transfer'
-                AND address IN (${tokensList})
-                UNION ALL
-                SELECT toString(parameters['from']) as wallet, address as token, -toInt256OrZero(toString(parameters['value'])) as delta
-                FROM base.events
-                WHERE event_name = 'Transfer'
-                AND address IN (${tokensList})
-            )
-            GROUP BY wallet, token
-            HAVING balance > 0
-        `;
+    for (let i = 0; i < uniqueBuyers.length; i++) {
+        const wallet = uniqueBuyers[i];
+        if (i % 20 === 0) console.log(`⏳ Progress: ${i}/${uniqueBuyers.length} wallets...`);
 
         try {
-            const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ sql }) });
-            const json = await res.json();
-            const results = json.data || json.result || [];
+            let pageToken = '';
+            let allRawBalances = [];
 
-            if (results.length > 0) {
-                console.log(`✅ Batch found ${results.length} active holdings.`);
+            do {
+                const url = `https://api.cdp.coinbase.com/platform/v2/data/evm/token-balances/base/${wallet}?pageSize=100${pageToken ? `&pageToken=${pageToken}` : ''}`;
+                const res = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${apiKey}` }
+                });
 
-                const toInsert = results.map(r => ({
-                    wallet: r.wallet.toLowerCase(),
-                    post_token: r.token.toLowerCase(),
-                    balance: r.balance,
+                if (!res.ok) {
+                    console.error(`❌ API Error for ${wallet}: ${res.status}`);
+                    break;
+                }
+
+                const json = await res.json();
+                allRawBalances.push(...(json.balances || []));
+                pageToken = json.nextPageToken;
+            } while (pageToken);
+
+            const filteredHoldings = allRawBalances
+                .filter(b => managedTokens.has(b.token.contractAddress.toLowerCase()))
+                .map(b => ({
+                    wallet: wallet,
+                    post_token: b.token.contractAddress.toLowerCase(),
+                    balance: b.amount.amount,
                     updated_at: new Date().toISOString()
                 }));
 
-                // Chunk Supabase inserts to avoid payload limits
-                for (let j = 0; j < toInsert.length; j += 1000) {
-                    const chunk = toInsert.slice(j, j + 1000);
-                    const { error } = await supabase.from('holdings').upsert(chunk);
-                    if (error) console.error(`❌ Supabase Error (Batch ${i}, Chunk ${j}):`, error.message);
-                }
-            } else {
-                console.log('⚪ No active holdings in this batch.');
+            if (filteredHoldings.length > 0) {
+                await supabase.from('holdings').upsert(filteredHoldings);
+                console.log(`✅ Synced ${filteredHoldings.length} holdings for ${wallet}`);
             }
+
+            await new Promise(r => setTimeout(r, 100)); // Rate limit safety
         } catch (e) {
-            console.error('💥 Batch failed:', e.message);
+            console.error(`💥 Failed to sync ${wallet}:`, e.message);
         }
     }
 

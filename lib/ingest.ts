@@ -35,6 +35,16 @@ export async function ingestNewBuys() {
     const lookbackDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
         .toISOString().replace('T', ' ').split('.')[0];
 
+    // 2. Fetch Tracked Tokens from DB to filter CDP query
+    const trackedAddresses = await db.getTrackedTokens();
+
+    if (trackedAddresses.length === 0) {
+        console.log('⚠️ No tracked tokens found. Run discovery script first.');
+        return { message: 'No tracked tokens', count: 0 };
+    }
+
+    const tokensList = (trackedAddresses as string[]).map(t => `'${t}'`).join(',');
+
     const cdpSql = `
         SELECT 
             block_timestamp,
@@ -44,13 +54,7 @@ export async function ingestNewBuys() {
         FROM base.events
         WHERE event_name = 'Transfer'
         AND block_timestamp > '${cursor}'
-        AND address IN (
-            SELECT DISTINCT toString(parameters['coin'])
-            FROM base.events
-            WHERE address = '${factoryAddress}'
-            AND event_name IN ('CoinCreated', 'CoinCreatedV4', 'CreatorCoinCreated')
-            AND block_timestamp > '${lookbackDate}'
-        )
+        AND address IN (${tokensList})
         ORDER BY block_timestamp ASC
         LIMIT 2000
     `;

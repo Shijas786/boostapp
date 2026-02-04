@@ -28,6 +28,7 @@ export function PlayerRow({ row, rank }: PlayerRowProps) {
                     address={row.buyer_address}
                     initialBaseName={row.base_name}
                     initialFarcasterName={row.farcaster_username}
+                    initialEnsName={row.ens_name}
                     initialAvatar={row.avatar_url}
                 />
             </div>
