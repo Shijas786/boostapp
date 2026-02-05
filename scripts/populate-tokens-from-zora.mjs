@@ -31,9 +31,6 @@ async function main() {
     const data = await coinsRes.json();
     const tokens = (data.coinsBasicInfo?.edges || []).map(e => ({
         address: e.node.coinAddress.toLowerCase(),
-        name: e.node.name,
-        symbol: e.node.symbol,
-        holder_count: e.node.uniqueHolders || 0,
         first_seen: new Date(e.node.createdTimestamp).toISOString(),
         last_synced_at: new Date().toISOString()
     }));

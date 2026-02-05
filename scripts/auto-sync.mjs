@@ -9,6 +9,7 @@ const SCRIPTS = [
 ];
 
 let tick = 0;
+let isRunning = false;
 
 function runScript(scriptPath) {
     return new Promise((resolve) => {
@@ -25,19 +26,30 @@ function runScript(scriptPath) {
 }
 
 async function loop() {
-    console.log(`\n--- Loop Tick ${tick} [${new Date().toLocaleTimeString()}] ---`);
-
-    for (const script of SCRIPTS) {
-        if (tick % script.frequency === 0) {
-            console.log(`▶️ Starting ${script.name}...`);
-            await runScript(script.path);
-            console.log(`✅ Finished ${script.name}`);
-        }
+    if (isRunning) {
+        console.log(`[${new Date().toLocaleTimeString()}] ⚠️ Previous loop still running, skipping...`);
+        return;
     }
 
-    tick++;
-    console.log(`\n😴 Sleeping for 5 minutes...`);
-    setTimeout(loop, 5 * 60 * 1000);
+    isRunning = true;
+    console.log(`\n--- Loop Tick ${tick} [${new Date().toLocaleTimeString()}] ---`);
+
+    try {
+        for (const script of SCRIPTS) {
+            if (tick % script.frequency === 0) {
+                console.log(`▶️ Starting ${script.name}...`);
+                await runScript(script.path);
+                console.log(`✅ Finished ${script.name}`);
+            }
+        }
+    } catch (e) {
+        console.error('❌ Loop Error:', e);
+    } finally {
+        isRunning = false;
+        tick++;
+        console.log(`\n😴 Sleeping for 5 minutes... (PULSE OK)`);
+        setTimeout(loop, 5 * 60 * 1000);
+    }
 }
 
 console.log('🌟 HubNation Auto-Sync Engine Started');
