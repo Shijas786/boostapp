@@ -1,4 +1,4 @@
-name: Ingest Base App Buys
+name: Auto-Sync Leaderboard
 
 on:
   schedule:
@@ -6,16 +6,33 @@ on:
   workflow_dispatch:
 
 jobs:
-  ingest:
+  sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Ingestion
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Maintenance Scripts
         run: |
-          # Fetch the VERCEL_URL if set, otherwise fallback to local/hardcoded for testing
-          # Note: In production GitHub Actions, you should set VERCEL_URL as a secret or environment variable
-          APP_URL="${VERCEL_URL:-https://boostapp-phi.vercel.app}"
-          echo "Triggering $APP_URL/api/ingest"
-          curl -X GET "$APP_URL/api/ingest" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+          echo "🔄 Syncing Transfers..."
+          node scripts/fetch-all-transfers-24h.mjs
+          echo "👤 Resolving Identities..."
+          node scripts/resolve-everything.mjs
+          echo "🤖 Flagging Bots..."
+          node scripts/flag-contracts.mjs
         env:
-          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CDP_API_KEY_ID: ${{ secrets.CDP_API_KEY_ID }}
+          CDP_API_SECRET: ${{ secrets.CDP_API_SECRET }}
+          NEYNAR_API_KEY: ${{ secrets.NEYNAR_API_KEY }}
+          NEXT_PUBLIC_ZORA_API_KEY: ${{ secrets.NEXT_PUBLIC_ZORA_API_KEY }}
+
