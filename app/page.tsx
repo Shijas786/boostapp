@@ -8,7 +8,7 @@ import { LiveFeed } from '@/app/components/LiveFeed';
 
 export default function Home() {
   const router = useRouter();
-  const [period, setPeriod] = useState('7d');
+  const [period, setPeriod] = useState('1d');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
