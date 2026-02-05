@@ -1,6 +1,8 @@
 name: Auto-Sync Leaderboard
 
 on:
+  push:
+    branches: [ main ]
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
