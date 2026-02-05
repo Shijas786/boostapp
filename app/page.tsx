@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { PlayerRow } from '@/app/components/PlayerRow';
+import { LiveFeed } from '@/app/components/LiveFeed';
 
 
 export default function Home() {
@@ -114,51 +115,61 @@ export default function Home() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-6xl mx-auto">
-        {/* Tabs */}
-        <div className="flex gap-4 mb-6 overflow-x-auto pb-2">
-          {['1d', '7d', '30d'].map(p => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`
-                      px-8 py-3 border-2 border-black font-black uppercase tracking-wide transition-all select-none
-                      ${period === p
-                  ? 'bg-black text-white shadow-[4px_4px_0px_0px_rgba(100,100,100,0.5)] translate-x-[2px] translate-y-[2px]'
-                  : 'bg-white hover:bg-gray-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:bg-blue-50'}
-                   `}
-            >
-              {p.toUpperCase()}
-            </button>
-          ))}
-        </div>
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-        {/* Leaderboard Table */}
-        <div className="border-2 border-black bg-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-          <div className="grid grid-cols-12 border-b-2 border-black bg-blue-100 p-4 font-black uppercase text-sm tracking-widest text-black/80">
-            <div className="col-span-2 md:col-span-1">#</div>
-            <div className="col-span-7 md:col-span-5">Identity</div>
-            <div className="col-span-3 md:col-span-2 text-right hidden md:block">Total Buys</div>
-            <div className="col-span-3 md:col-span-2 text-right hidden md:block">Unique Posts</div>
-            <div className="col-span-3 md:col-span-2 text-right px-4 hidden md:block">Last Active</div>
+        {/* Left Column: Leaderboard (2/3 width) */}
+        <div className="lg:col-span-2">
+          {/* Tabs */}
+          <div className="flex gap-4 mb-6 overflow-x-auto pb-2">
+            {['1d', '7d', '30d'].map(p => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`
+                        px-8 py-3 border-2 border-black font-black uppercase tracking-wide transition-all select-none
+                        ${period === p
+                    ? 'bg-black text-white shadow-[4px_4px_0px_0px_rgba(100,100,100,0.5)] translate-x-[2px] translate-y-[2px]'
+                    : 'bg-white hover:bg-gray-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:bg-blue-50'}
+                    `}
+              >
+                {p.toUpperCase()}
+              </button>
+            ))}
           </div>
 
-          <div className="divide-y-2 divide-black">
-            {loading ? (
-              <div className="p-12 text-center font-bold animate-pulse text-gray-400 text-xl">Loading Sketch...</div>
-            ) : results.length === 0 ? (
-              <div className="p-12 text-center flex flex-col items-center">
-                <div className="text-4xl mb-4">📭</div>
-                <div className="font-bold text-xl">No data found within this period.</div>
-                <div className="text-gray-500 mt-2">Try switching tabs or check back later!</div>
-              </div>
-            ) : (
-              results.map((row, i) => (
-                <PlayerRow key={row.buyer_address} row={row} rank={i + 1} />
-              ))
-            )}
+          {/* Leaderboard Table */}
+          <div className="border-2 border-black bg-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+            <div className="grid grid-cols-12 border-b-2 border-black bg-blue-100 p-4 font-black uppercase text-sm tracking-widest text-black/80">
+              <div className="col-span-2 md:col-span-1">#</div>
+              <div className="col-span-7 md:col-span-5">Identity</div>
+              <div className="col-span-3 md:col-span-2 text-right hidden md:block">Total Buys</div>
+              <div className="col-span-3 md:col-span-2 text-right hidden md:block">Unique Posts</div>
+              <div className="col-span-3 md:col-span-2 text-right px-4 hidden md:block">Last Active</div>
+            </div>
+
+            <div className="divide-y-2 divide-black">
+              {loading ? (
+                <div className="p-12 text-center font-bold animate-pulse text-gray-400 text-xl">Loading Sketch...</div>
+              ) : results.length === 0 ? (
+                <div className="p-12 text-center flex flex-col items-center">
+                  <div className="text-4xl mb-4">📭</div>
+                  <div className="font-bold text-xl">No data found within this period.</div>
+                  <div className="text-gray-500 mt-2">Try switching tabs or check back later!</div>
+                </div>
+              ) : (
+                results.map((row, i) => (
+                  <PlayerRow key={row.buyer_address} row={row} rank={i + 1} />
+                ))
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Right Column: Live Feed (1/3 width) */}
+        <div className="lg:col-span-1">
+          <LiveFeed />
+        </div>
+
       </div>
     </div>
   );
