@@ -107,6 +107,8 @@ async function main() {
 
     console.log(`\n\n✨ Done! Resolved ${resolvedCount} new Base Names.`);
     console.log('The leaderboard will now prioritize these users.');
+
+    process.exit(0);
 }
 
 main().catch(err => {
