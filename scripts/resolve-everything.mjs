@@ -1,17 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 
+import { getEnv } from '../lib/env-loader.mjs';
+
 async function main() {
     console.log('\n🚀 Fulfilling Request: Resolving EVERY Top Address (Neynar Focused)...\n');
 
-    // Load env
-    const envFile = fs.readFileSync('.env.local', 'utf8');
-    const env = {};
-    envFile.split('\n').forEach(line => {
-        const [k, ...v] = line.split('=');
-        if (k && v.length) env[k.trim()] = v.join('=').trim();
-    });
-
+    const env = getEnv();
     const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
     const neynarKey = env.NEYNAR_API_KEY;
 
@@ -80,4 +75,7 @@ async function main() {
     console.log('The leaderboard will now prioritize these users.');
 }
 
-main().catch(console.error);
+main().catch(err => {
+    console.error(err);
+    process.exit(1);
+});

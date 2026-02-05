@@ -24,16 +24,12 @@ async function generateCDPJWT(apiKeyId, apiSecret) {
     }).setProtectedHeader({ alg: 'EdDSA', kid: apiKeyId, typ: 'JWT' }).sign(privateKey);
 }
 
+import { getEnv } from '../lib/env-loader.mjs';
+
 async function main() {
     console.log('\n🔄 Fetching ALL Transfers for Tracked Tokens (Last 24 Hours)...\n');
 
-    const envFile = fs.readFileSync('.env.local', 'utf8');
-    const env = {};
-    envFile.split('\n').forEach(line => {
-        const [k, ...v] = line.split('=');
-        if (k && v.length) env[k.trim()] = v.join('=').trim();
-    });
-
+    const env = getEnv();
     const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
     const jwtToken = await generateCDPJWT(env.CDP_API_KEY_ID, env.CDP_API_SECRET);
 
@@ -107,4 +103,7 @@ async function main() {
     console.log('🏁 Sync complete!');
 }
 
-main().catch(console.error);
+main().catch(err => {
+    console.error(err);
+    process.exit(1);
+});

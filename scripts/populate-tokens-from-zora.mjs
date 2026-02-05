@@ -1,17 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 
+import { getEnv } from '../lib/env-loader.mjs';
+
 async function main() {
     console.log('\n🚀 Refreshing Tracked Tokens from Zora (Top Volume)...\n');
 
-    // Load env
-    const envFile = fs.readFileSync('.env.local', 'utf8');
-    const env = {};
-    envFile.split('\n').forEach(line => {
-        const [k, ...v] = line.split('=');
-        if (k && v.length) env[k.trim()] = v.join('=').trim();
-    });
-
+    const env = getEnv();
     const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
     const zoraApiKey = env.NEXT_PUBLIC_ZORA_API_KEY;
 
@@ -56,4 +51,7 @@ async function main() {
     // Let's just run fetch-1d-buys.mjs which we already updated or created
 }
 
-main().catch(console.error);
+main().catch(err => {
+    console.error(err);
+    process.exit(1);
+});
