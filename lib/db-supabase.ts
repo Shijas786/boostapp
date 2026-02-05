@@ -130,7 +130,8 @@ export const dbSupabase = {
                     const isRealFarcaster = r.farcaster_username && r.farcaster_username.length > 2 && !r.farcaster_username.startsWith('0x');
                     const isRealENS = r.ens_name && r.ens_name.includes('.') && !r.ens_name.startsWith('0x');
 
-                    return isRealBaseName || isRealFarcaster || isRealENS;
+                    // Relaxed for now: return true
+                    return true;
                 })
                 .slice(0, limit);
         }
@@ -158,7 +159,8 @@ export const dbSupabase = {
                 const isRealFarcaster = r.farcaster_username && r.farcaster_username.length > 2 && !r.farcaster_username.startsWith('0x');
                 const isRealENS = r.ens_name && r.ens_name.includes('.') && !r.ens_name.startsWith('0x');
 
-                return isRealBaseName || isRealFarcaster || isRealENS;
+                // Relaxed for now: return true
+                return true;
             }).slice(0, limit);
     },
 
