@@ -10,11 +10,21 @@ async function main() {
     const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
     const neynarKey = env.NEYNAR_API_KEY;
 
-    // 1. Get ALL unique buyers from recent activity (last 7 days)
-    console.log('Step 1: Fetching top addresses from DB...');
+    // 0. Get Recent Buyers (Last 24h) to ensure freshness
+    console.log('Step 0: Fetching recent buyers from 24h activity...');
+    const { data: recentBuys } = await supabase
+        .from('buys')
+        .select('buyer')
+        .order('block_time', { ascending: false })
+        .limit(200);
+
+    const recentAddresses = recentBuys ? recentBuys.map(b => b.buyer.toLowerCase()) : [];
+
+    // 1. Get Top All-Time Buyers
+    console.log('Step 1: Fetching top addresses from Leaderboard...');
     const { data: results, error } = await supabase.rpc('get_leaderboard', {
         period_days: 7,
-        limit_count: 2000
+        limit_count: 1000
     });
 
     if (error) {
@@ -22,8 +32,14 @@ async function main() {
         return;
     }
 
-    const addresses = results.map(u => u.buyer_address.toLowerCase());
-    console.log(`👤 Found ${addresses.length} addresses. Starting Neynar Bulk Resolve...`);
+    const leaderboardAddresses = results.map(u => u.buyer_address.toLowerCase());
+
+    // Merge and deduplicate: Prioritize Recent -> Then Leaderboard
+    const allAddresses = [...new Set([...recentAddresses, ...leaderboardAddresses])]; // Set removes duplicates
+
+    // Limit to 2000 total to avoid massive runs
+    const addresses = allAddresses.slice(0, 2000);
+    console.log(`👤 Found ${addresses.length} unique addresses (mixed Recents + Top). Starting Neynar Bulk Resolve...`);
 
     // 2. Resolve via Neynar (Farcaster) - 100 at a time
     let matches = 0;
