@@ -56,14 +56,92 @@ export const dbSupabase = {
     // Leaderboard
     getLeaderboard: async (limit = 20, period: string = '7d') => {
         if (!supabase) return [];
+
+        // Special handling for 24h (1d) to ensure absolute freshness via raw query
+        if (period === '1d' || period === '24h') {
+            const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+            // 1. Fetch raw buys from last 24h
+            const { data: recentBuys, error: buyError } = await supabase
+                .from('buys')
+                .select('buyer, block_time, post_token')
+                .gt('block_time', oneDayAgo);
+
+            if (buyError || !recentBuys) {
+                console.error('Error fetching recent buys:', buyError);
+                return [];
+            }
+
+            // 2. Aggregate in memory
+            const stats: Record<string, { total_buys: number, unique_posts: Set<string>, last_active: string }> = {};
+
+            recentBuys.forEach(buy => {
+                const b = buy.buyer.toLowerCase();
+                if (!stats[b]) {
+                    stats[b] = { total_buys: 0, unique_posts: new Set(), last_active: buy.block_time };
+                }
+                stats[b].total_buys++;
+                stats[b].unique_posts.add(buy.post_token);
+                if (new Date(buy.block_time) > new Date(stats[b].last_active)) {
+                    stats[b].last_active = buy.block_time;
+                }
+            });
+
+            // 3. Convert to array and sort
+            const ranked = Object.entries(stats)
+                .map(([buyer, stat]) => ({
+                    buyer_address: buyer,
+                    total_buys: stat.total_buys,
+                    unique_posts: stat.unique_posts.size,
+                    last_active: stat.last_active
+                }))
+                .sort((a, b) => b.total_buys - a.total_buys);
+
+            // 4. Fetch Identities
+            const topBuyers = ranked.map(r => r.buyer_address);
+            if (topBuyers.length === 0) return [];
+
+            const { data: identities } = await supabase
+                .from('identities')
+                .select('*')
+                .in('address', topBuyers);
+
+            const idMap = new Map(identities?.map(i => [i.address.toLowerCase(), i]));
+
+            // 5. Merge and Filter
+            return ranked
+                .map(r => {
+                    const id = idMap.get(r.buyer_address);
+                    return {
+                        ...r,
+                        base_name: id?.base_name,
+                        ens_name: id?.ens,
+                        farcaster_username: id?.farcaster_username,
+                        farcaster_fid: id?.farcaster_fid,
+                        avatar_url: id?.avatar_url
+                    };
+                })
+                .filter((r: any) => {
+                    // Strict Verified Human Filter
+                    const isBot = (name: string) => name && (name.toLowerCase().includes('bot') || name.toLowerCase().includes('contract'));
+                    if (isBot(r.ens_name) || isBot(r.base_name)) return false;
+
+                    const isRealBaseName = r.base_name && r.base_name.length > 5 && !r.base_name.startsWith('0x');
+                    const isRealFarcaster = r.farcaster_username && r.farcaster_username.length > 2 && !r.farcaster_username.startsWith('0x');
+                    const isRealENS = r.ens_name && r.ens_name.includes('.') && !r.ens_name.startsWith('0x');
+
+                    return isRealBaseName || isRealFarcaster || isRealENS;
+                })
+                .slice(0, limit);
+        }
+
+        // Fallback to RPC for longer periods
         let days = 7;
-        if (period === '1d') days = 1;
         if (period === '30d') days = 30;
 
-        // Fetch extra rows to account for filtered bots/contracts
         const { data, error } = await supabase.rpc('get_leaderboard', {
             period_days: days,
-            limit_count: 5000 // Fetch deep to find humans
+            limit_count: 5000
         });
 
         if (error) {
@@ -71,8 +149,7 @@ export const dbSupabase = {
             return [];
         }
 
-        // Filter for "real humans" (Verified identities only)
-        const filtered = (data || [])
+        return (data || [])
             .filter((r: any) => {
                 const isBot = (name: string) => name && (name.toLowerCase().includes('bot') || name.toLowerCase().includes('contract'));
                 if (isBot(r.ens_name) || isBot(r.base_name)) return false;
@@ -83,8 +160,6 @@ export const dbSupabase = {
 
                 return isRealBaseName || isRealFarcaster || isRealENS;
             }).slice(0, limit);
-
-        return filtered;
     },
 
     getActivityFeed: async (address: string = '', limit = 50) => {
