@@ -1,14 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
-import fs from 'fs';
-
+import { getName } from '@coinbase/onchainkit/identity';
+import { base } from 'viem/chains';
 import { getEnv } from '../lib/env-loader.mjs';
 
 async function main() {
-    console.log('\n🚀 Fulfilling Request: Resolving EVERY Top Address (Neynar Focused)...\n');
+    console.log('\n🚀 Fulfilling Request: Resolving EVERY Top Address (CDP/Base Name Focused)...\n');
 
     const env = getEnv();
     const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
-    const neynarKey = env.NEYNAR_API_KEY;
 
     // 0. Get Recent Buyers (Last 24h) to ensure freshness
     console.log('Step 0: Fetching recent buyers from 24h activity...');
@@ -34,60 +33,72 @@ async function main() {
 
     const leaderboardAddresses = results.map(u => u.buyer_address.toLowerCase());
 
-    // Merge and deduplicate: Prioritize Recent -> Then Leaderboard
-    const allAddresses = [...new Set([...recentAddresses, ...leaderboardAddresses])]; // Set removes duplicates
+    // Merge and deduplicate
+    const allAddresses = [...new Set([...recentAddresses, ...leaderboardAddresses])];
+    const addresses = allAddresses.slice(0, 2000); // Limit to 2000
 
-    // Limit to 2000 total to avoid massive runs
-    const addresses = allAddresses.slice(0, 2000);
-    console.log(`👤 Found ${addresses.length} unique addresses (mixed Recents + Top). Starting Neynar Bulk Resolve...`);
+    console.log(`👤 Found ${addresses.length} unique addresses. Checking DB for missing identities...`);
 
-    // 2. Resolve via Neynar (Farcaster) - 100 at a time
-    let matches = 0;
-    for (let i = 0; i < addresses.length; i += 100) {
-        const batch = addresses.slice(i, i + 100);
-        console.log(`   Processing batch ${i / 100 + 1}...`);
+    // 2. Filter out already resolved identities
+    // We only want to resolve those who have NO name yet or haven't been updated in 7 days?
+    // For simplicity, fetch all KNOWN identities and filter them out if they have a base_name
+    const { data: existing } = await supabase
+        .from('identities')
+        .select('address, base_name, ens')
+        .in('address', addresses);
 
-        try {
-            const url = `https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses=${batch.join(',')}`;
-            const response = await fetch(url, {
-                headers: { 'api_key': neynarKey }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                for (const addr in data) {
-                    const users = data[addr];
-                    if (users && users.length > 0) {
-                        const user = users[0];
-                        const { error: upsertError } = await supabase.from('identities').upsert({
-                            address: addr.toLowerCase(),
-                            farcaster_username: user.username,
-                            farcaster_fid: user.fid,
-                            avatar_url: user.pfp_url,
-                            updated_at: new Date().toISOString()
-                        });
-
-                        if (!upsertError) {
-                            process.stdout.write(`✅ @${user.username} `);
-                            matches++;
-                        }
-                    } else {
-                        process.stdout.write('.');
-                    }
-                }
-                console.log('\nBatch complete.');
-            } else {
-                console.error(`   ❌ Neynar API Error: ${response.status}`);
-            }
-        } catch (e) {
-            console.error(`   ❌ Request failed: ${e.message}`);
+    const resolvedMap = new Map();
+    existing?.forEach(i => {
+        if (i.base_name || i.ens) {
+            resolvedMap.set(i.address.toLowerCase(), true);
         }
+    });
 
-        // Anti-rate limit for our own console/updates
-        await new Promise(r => setTimeout(r, 500));
+    const toResolve = addresses.filter(a => !resolvedMap.has(a));
+    console.log(`📝 Addresses needing resolution: ${toResolve.length} (Skipped ${addresses.length - toResolve.length})`);
+
+    // 3. Resolve via OnchainKit (Base Names)
+    // Concurrency: 5 at a time to be safe with RPC
+    const CONCURRENCY = 5;
+    let resolvedCount = 0;
+
+    for (let i = 0; i < toResolve.length; i += CONCURRENCY) {
+        const batch = toResolve.slice(i, i + CONCURRENCY);
+
+        await Promise.all(batch.map(async (address) => {
+            try {
+                // Try Base Name
+                const name = await getName({ address, chain: base });
+
+                if (name) {
+                    process.stdout.write(`✅ @${name} `);
+
+                    // Upsert identity
+                    await supabase.from('identities').upsert({
+                        address: address,
+                        base_name: name,
+                        updated_at: new Date().toISOString()
+                    });
+                    resolvedCount++;
+                } else {
+                    process.stdout.write('.');
+                    // Mark as checked
+                    await supabase.from('identities').upsert({
+                        address: address,
+                        updated_at: new Date().toISOString()
+                    });
+                }
+            } catch (e) {
+                // Ignore errors (RPC issues etc)
+                process.stdout.write('x');
+            }
+        }));
+
+        // Tiny delay to cool down RPC
+        await new Promise(r => setTimeout(r, 100));
     }
 
-    console.log(`\n\n✨ Done! Found ${matches} verified Farcaster identities.`);
+    console.log(`\n\n✨ Done! Resolved ${resolvedCount} new Base Names.`);
     console.log('The leaderboard will now prioritize these users.');
 }
 

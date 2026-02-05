@@ -29,18 +29,14 @@ jobs:
           if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then echo "❌ SUPABASE_SERVICE_ROLE_KEY is NOT set"; else echo "✅ SUPABASE_SERVICE_ROLE_KEY is set"; fi
           if [ -z "$CDP_API_KEY_ID" ]; then echo "❌ CDP_API_KEY_ID is NOT set"; else echo "✅ CDP_API_KEY_ID is set"; fi
           if [ -z "$CDP_API_SECRET" ]; then echo "❌ CDP_API_SECRET is NOT set"; else echo "✅ CDP_API_SECRET is set"; fi
-          if [ -z "$NEYNAR_API_KEY" ]; then echo "❌ NEYNAR_API_KEY is NOT set"; else echo "✅ NEYNAR_API_KEY is set"; fi
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CDP_API_KEY_ID: ${{ secrets.CDP_API_KEY_ID }}
           CDP_API_SECRET: ${{ secrets.CDP_API_SECRET }}
-          NEYNAR_API_KEY: ${{ secrets.NEYNAR_API_KEY }}
 
       - name: Run Maintenance Scripts
         run: |
-          echo "🔍 Discovering New Tokens..."
-          node scripts/populate-tokens-from-zora.mjs
           echo "🔄 Syncing Transfers..."
           node scripts/fetch-all-transfers-24h.mjs
           echo "👤 Resolving Identities..."
