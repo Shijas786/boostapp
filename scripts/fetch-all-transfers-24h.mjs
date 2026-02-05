@@ -2,6 +2,11 @@ import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import { SignJWT, importJWK } from 'jose';
 import { webcrypto } from 'node:crypto';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 if (!globalThis.crypto) {
     globalThis.crypto = webcrypto;
