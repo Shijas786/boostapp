@@ -39,6 +39,8 @@ jobs:
 
       - name: Run Maintenance Scripts
         run: |
+          echo "🔍 Discovering New Tokens..."
+          node scripts/populate-tokens-from-zora.mjs
           echo "🔄 Syncing Transfers..."
           node scripts/fetch-all-transfers-24h.mjs
           echo "👤 Resolving Identities..."
