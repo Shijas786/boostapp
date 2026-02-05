@@ -13,6 +13,7 @@ export async function GET(request: Request) {
         return NextResponse.json({
             ok: true,
             data: results,
+            version: 'v2-raw-24h',
             timestamp: new Date().toISOString()
         });
     } catch (e: any) {
