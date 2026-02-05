@@ -19,7 +19,7 @@ export function LiveFeed() {
 
     const fetchLive = async () => {
         try {
-            const res = await fetch('/api/live-buys');
+            const res = await fetch(`/api/live-buys?_t=${Date.now()}`);
             const data = await res.json();
             setBuys(data.data || []);
             setLastUpdate(new Date());

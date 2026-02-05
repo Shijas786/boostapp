@@ -17,7 +17,7 @@ export default function Home() {
     console.log(`[Leaderboard] Fetch started for period: ${p}`);
     setLoading(true);
     try {
-      const res = await fetch(`/api/leaderboard?period=${p}`);
+      const res = await fetch(`/api/leaderboard?period=${p}&_t=${Date.now()}`);
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
 
       const data = await res.json();
