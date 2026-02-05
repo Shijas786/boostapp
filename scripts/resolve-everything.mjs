@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { getName } from '@coinbase/onchainkit/identity';
+import { getName, getAvatar } from '@coinbase/onchainkit/identity';
 import { base } from 'viem/chains';
 import { getEnv } from '../lib/env-loader.mjs';
 
@@ -73,10 +73,17 @@ async function main() {
                 if (name) {
                     process.stdout.write(`✅ @${name} `);
 
+                    // Try get avatar
+                    let avatar = null;
+                    try {
+                        avatar = await getAvatar({ ensName: name, chain: base });
+                    } catch (e) { /* ignore */ }
+
                     // Upsert identity
                     await supabase.from('identities').upsert({
                         address: address,
                         base_name: name,
+                        avatar_url: avatar,
                         updated_at: new Date().toISOString()
                     });
                     resolvedCount++;
